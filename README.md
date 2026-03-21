@@ -28,21 +28,21 @@ clankr setup-repo user/project
 clankr launch user/project                        # interactive, bare profile
 clankr launch -p gsd user/project                 # GSD workflow
 clankr launch -d -p gsd user/project              # detached (tmux)
-clankr launch -d -p gsd -s feat user/project      # named slot
+clankr launch -d -p gsd -s auth-fix user/project   # named slot
 clankr launch /path/to/local/repo                 # local repo
 
-clankr attach my-project                          # reattach to detached agent
+clankr attach project-1                           # reattach to detached agent
 clankr ls                                         # list slots
-clankr rm my-project                              # remove (warns if unpushed)
+clankr rm project-1                               # remove (warns if unpushed)
 clankr clean                                      # remove all stopped clean slots
 ```
 
 ```
 $ clankr ls
 SLOT                 PROFILE  STATUS       REPO
-hello-world          gsd      detached     /home/max/.local/share/clankr/repos/hello-world
-my-project-feat      gsd      running      /home/max/.local/share/clankr/repos/my-project-feat
-old-thing            bare     stopped      /home/max/.local/share/clankr/repos/old-thing
+hello-world-1        gsd      detached     /home/max/.local/share/clankr/repos/hello-world-1
+project-2            gsd      running      /home/max/.local/share/clankr/repos/project-2
+project-1            bare     stopped      /home/max/.local/share/clankr/repos/project-1
 ```
 
 ## profiles
