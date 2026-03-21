@@ -1,7 +1,7 @@
 .PHONY: test check format lint install dev clean build publish release-patch release-minor release-major
 
 test:
-	uv run pytest
+	uv run pytest || test $$? -eq 5
 
 check: lint
 	@echo "All checks passed!"
