@@ -242,7 +242,7 @@ def setup_repo(repo: Annotated[str, tyro.conf.Positional]) -> None:
                     {
                         "actor_id": int(r.stdout.strip()),
                         "actor_type": "User",
-                        "bypass_mode": "always",
+                        "bypass_mode": "exempt",
                     }
                 ]
             else:
