@@ -45,7 +45,25 @@ class Launch:
 def launch(args: Launch) -> None:
     """Launch an agent on a repository."""
     repo_url = docker.expand_repo_url(args.repo)
-    slot = args.slot or Path(repo_url.rstrip("/")).stem.removesuffix(".git")
+    base = args.slot or Path(repo_url.rstrip("/")).stem.removesuffix(".git")
+
+    if args.slot:
+        slot = args.slot
+        # Explicit slot: handle stale container
+        state = docker.container_state(slot)
+        if state == "running":
+            name = docker.container_name(slot)
+            print(f"Container {name} is already running.")
+            if args.detach:
+                print(f"  attach:  clankr attach {slot}")
+            else:
+                print("Attaching to running container...")
+                subprocess.run(["docker", "attach", name])
+            return
+        elif state is not None:
+            docker.remove_container(slot)
+    else:
+        slot = docker.next_slot(base)
 
     repo_dir = docker.clone_repo(repo_url, slot)
     claude_dir = docker.setup_slot(slot, args.profile)
@@ -54,6 +72,7 @@ def launch(args: Launch) -> None:
     docker.refresh_credentials(slot)
 
     name = docker.container_name(slot)
+
     common = [
         "-v",
         f"{repo_dir}:/work",

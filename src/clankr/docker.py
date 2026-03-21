@@ -107,9 +107,49 @@ def container_name(slot: str) -> str:
     return f"clankr-{slot}"
 
 
+def container_state(slot: str) -> str | None:
+    """Return container state ('running', 'exited', etc.) or None if not found."""
+    name = container_name(slot)
+    r = subprocess.run(
+        ["docker", "inspect", "--format", "{{.State.Status}}", name],
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode != 0:
+        return None
+    return r.stdout.strip()
+
+
+def remove_container(slot: str) -> None:
+    subprocess.run(["docker", "rm", "-f", container_name(slot)], capture_output=True)
+
+
+def next_slot(base: str) -> str:
+    """Find the next available slot name: base-1, base-2, etc.
+
+    Cleans up stale (non-running) containers along the way.
+    """
+    n = 1
+    while True:
+        candidate = f"{base}-{n}"
+        state = container_state(candidate)
+        if state is None:
+            # No container — also check if slot dir exists but container is gone
+            slot_dir = paths.run_dir() / candidate
+            if not slot_dir.exists():
+                return candidate
+            # Slot dir exists but no container — reusable
+            return candidate
+        if state == "running":
+            n += 1
+            continue
+        # Stale container — clean it up, reuse the slot
+        remove_container(candidate)
+        return candidate
+
+
 def is_running(slot: str) -> bool:
-    r = subprocess.run(["docker", "inspect", container_name(slot)], capture_output=True)
-    return r.returncode == 0
+    return container_state(slot) == "running"
 
 
 def slot_status(slot: str) -> str:
