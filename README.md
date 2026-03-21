@@ -1,6 +1,6 @@
 # clankr
 
-Run coding agents in isolated Docker containers. `--dangerously-skip-permissions` without the danger.
+Run Claude Code in isolated Docker containers. `--dangerously-skip-permissions` without the danger.
 
 ## install
 
