@@ -52,12 +52,13 @@ def launch(args: Launch) -> None:
         # Explicit slot: handle stale container
         state = docker.container_state(slot)
         if state == "running":
+            print(f"Slot {slot} is already running. Attaching...")
             name = docker.container_name(slot)
-            print(f"Container {name} is already running.")
-            if args.detach:
-                print(f"  attach:  clankr attach {slot}")
+            # Check if it's in a tmux session
+            r = subprocess.run(["tmux", "has-session", "-t", name], capture_output=True)
+            if r.returncode == 0:
+                subprocess.run(["tmux", "attach", "-t", name])
             else:
-                print("Attaching to running container...")
                 subprocess.run(["docker", "attach", name])
             return
         elif state is not None:
