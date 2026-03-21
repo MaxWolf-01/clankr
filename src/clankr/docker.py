@@ -73,6 +73,7 @@ def clone_repo(repo_url: str, slot: str) -> Path:
 def expand_repo_url(repo: str) -> str:
     """Expand user/project shorthand to full GitHub URL."""
     import re
+
     if re.match(r"^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$", repo):
         return f"https://github.com/{repo}"
     return repo
@@ -98,9 +99,7 @@ def container_name(slot: str) -> str:
 
 
 def is_running(slot: str) -> bool:
-    r = subprocess.run(
-        ["docker", "inspect", container_name(slot)], capture_output=True
-    )
+    r = subprocess.run(["docker", "inspect", container_name(slot)], capture_output=True)
     return r.returncode == 0
 
 
@@ -124,13 +123,9 @@ def git_status(slot: str) -> tuple[int, int]:
     repo = paths.repos_dir() / slot
     if not repo.exists():
         return 0, 0
-    dirty = subprocess.run(
-        ["git", "-C", str(repo), "status", "--porcelain"],
-        capture_output=True, text=True
-    )
+    dirty = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True)
     unpushed = subprocess.run(
-        ["git", "-C", str(repo), "log", "--oneline", "@{u}..HEAD"],
-        capture_output=True, text=True
+        ["git", "-C", str(repo), "log", "--oneline", "@{u}..HEAD"], capture_output=True, text=True
     )
     d = len(dirty.stdout.strip().splitlines()) if dirty.stdout.strip() else 0
     u = len(unpushed.stdout.strip().splitlines()) if unpushed.stdout.strip() else 0

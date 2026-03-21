@@ -1,6 +1,6 @@
 """Config file management."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from clankr.paths import config_file

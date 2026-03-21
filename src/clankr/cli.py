@@ -39,7 +39,9 @@ class Launch:
     """Extra arguments passed to claude (after --)."""
 
 
-@app.command(name="launch", )
+@app.command(
+    name="launch",
+)
 def launch(args: Launch) -> None:
     """Launch an agent on a repository."""
     repo_url = docker.expand_repo_url(args.repo)
@@ -53,8 +55,10 @@ def launch(args: Launch) -> None:
 
     name = docker.container_name(slot)
     common = [
-        "-v", f"{repo_dir}:/work",
-        "-v", f"{claude_dir}:/home/agent/.claude",
+        "-v",
+        f"{repo_dir}:/work",
+        "-v",
+        f"{claude_dir}:/home/agent/.claude",
         *docker.env_args(),
     ]
 
@@ -63,15 +67,23 @@ def launch(args: Launch) -> None:
     if args.detach:
         subprocess.run(["tmux", "kill-session", "-t", name], capture_output=True)
         cmd = f"docker run --rm -it --name {name} {' '.join(common)} {docker.IMAGE_NAME} {' '.join(args.claude_args)}"
-        subprocess.run([
-            "tmux", "new-session", "-d", "-s", name,
-            "-x", str(shutil.get_terminal_size().columns),
-            "-y", str(shutil.get_terminal_size().lines),
-            cmd,
-        ])
+        subprocess.run(
+            [
+                "tmux",
+                "new-session",
+                "-d",
+                "-s",
+                name,
+                "-x",
+                str(shutil.get_terminal_size().columns),
+                "-y",
+                str(shutil.get_terminal_size().lines),
+                cmd,
+            ]
+        )
         print(f"Detached: tmux session '{name}'")
         print(f"  attach:  clankr attach {slot}")
-        print(f"  detach:  Ctrl+B D")
+        print("  detach:  Ctrl+B D")
     else:
         subprocess.run(
             ["docker", "run", "--rm", "-it", "--name", name, *common, docker.IMAGE_NAME, *args.claude_args],
@@ -97,7 +109,9 @@ def list_slots() -> None:
         print(f"{s:<20} {profile:<8} {status:<12} {repo}")
 
 
-@app.command(name="attach", )
+@app.command(
+    name="attach",
+)
 def attach(slot: Annotated[str, tyro.conf.Positional]) -> None:
     """Attach to a detached agent's tmux session."""
     name = docker.container_name(slot)
@@ -178,10 +192,17 @@ def setup_repo(repo: Annotated[str, tyro.conf.Positional]) -> None:
         sys.exit(1)
 
     print(f"Adding {cfg.clanker_user} as collaborator to {repo}...")
-    subprocess.run([
-        "gh", "api", "-X", "PUT", f"repos/{repo}/collaborators/{cfg.clanker_user}",
-        "-f", "permission=push",
-    ])
+    subprocess.run(
+        [
+            "gh",
+            "api",
+            "-X",
+            "PUT",
+            f"repos/{repo}/collaborators/{cfg.clanker_user}",
+            "-f",
+            "permission=push",
+        ]
+    )
 
     ruleset = Path(__file__).parent / "ruleset.json"
     if ruleset.exists():

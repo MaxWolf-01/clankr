@@ -1,7 +1,7 @@
 """XDG-compliant paths for clankr config and data."""
 
-from pathlib import Path
 import os
+from pathlib import Path
 
 
 def config_dir() -> Path:
