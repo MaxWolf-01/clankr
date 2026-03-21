@@ -13,9 +13,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 RUN npm install -g @anthropic-ai/claude-code
 
-RUN git config --system user.name "clankr-agent" \
-    && git config --system user.email "clankr-agent@noreply" \
-    && git config --system credential.helper '!f() { echo "username=x-access-token"; echo "password=$GH_TOKEN"; }; f'
+RUN git config --system credential.helper '!f() { echo "username=x-access-token"; echo "password=$GH_TOKEN"; }; f'
+
+# Git identity is set at runtime via GIT_AUTHOR_NAME / GIT_AUTHOR_EMAIL /
+# GIT_COMMITTER_NAME / GIT_COMMITTER_EMAIL env vars so it matches the
+# configured clanker_user rather than a generic fallback.
 
 RUN usermod -d /home/agent -l agent node && mv /home/node /home/agent
 USER agent

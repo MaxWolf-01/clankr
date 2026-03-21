@@ -88,10 +88,19 @@ def refresh_credentials(slot: str) -> None:
 
 def env_args() -> list[str]:
     cfg = config.load()
+    args: list[str] = []
     pat = cfg.pat()
     if pat:
-        return ["--env", f"GH_TOKEN={pat}"]
-    return []
+        args += ["--env", f"GH_TOKEN={pat}"]
+    if cfg.clanker_user:
+        email = f"{cfg.clanker_user}@users.noreply.github.com"
+        args += [
+            "--env", f"GIT_AUTHOR_NAME={cfg.clanker_user}",
+            "--env", f"GIT_AUTHOR_EMAIL={email}",
+            "--env", f"GIT_COMMITTER_NAME={cfg.clanker_user}",
+            "--env", f"GIT_COMMITTER_EMAIL={email}",
+        ]
+    return args
 
 
 def container_name(slot: str) -> str:
