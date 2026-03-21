@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import Annotated
 
@@ -324,6 +325,12 @@ def init() -> None:
     paths.run_dir().mkdir(parents=True, exist_ok=True)
 
     print("\nReady. Run: clankr launch user/project")
+
+
+@app.command(name="version")
+def version() -> None:
+    """Print the clankr version."""
+    print(pkg_version("clankr"))
 
 
 def main() -> None:
