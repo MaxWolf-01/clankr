@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# GSD profile — installs Get Shit Done framework
+set -euo pipefail
+PROFILE_DIR="$(cd "$(dirname "$0")" && pwd)"
+TARGET="$1"
+
+PARENT="$(dirname "$TARGET")"
+cd "$PARENT"
+npx get-shit-done-cc@latest --claude --local
+
+echo "gsd profile ready"
