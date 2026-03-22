@@ -46,16 +46,15 @@ def setup_slot(slot: str, profile: str) -> Path:
         json.dumps({"hasCompletedOnboarding": True, "installMethod": "npm", "numStartups": 5})
     )
 
-    # Run profile setup script
-    setup_script = profile_dir / "setup"
-    if setup_script.exists():
-        subprocess.run(["bash", str(setup_script), str(claude_dir)], check=True)
-
-    # Copy CLAUDE.md + settings.json (after setup, so ours wins)
-    for f in ["CLAUDE.md", "settings.json"]:
+    for f in ["CLAUDE.md", "settings.json", "init"]:
         src = profile_dir / f
         if src.exists():
-            shutil.copy2(src, claude_dir / f)
+            dest = claude_dir / f
+            shutil.copy2(src, dest)
+            if f == "init":
+                dest.chmod(0o755)
+
+    (paths.run_dir() / slot / "profile").write_text(profile)
 
     return claude_dir
 
@@ -177,8 +176,10 @@ def slot_status(slot: str) -> str:
 
 
 def slot_profile(slot: str) -> str:
-    gsd_dir = paths.run_dir() / slot / ".claude" / "get-shit-done"
-    return "gsd" if gsd_dir.exists() else "bare"
+    profile_file = paths.run_dir() / slot / "profile"
+    if profile_file.exists():
+        return profile_file.read_text().strip()
+    return "bare"
 
 
 def git_status(slot: str) -> tuple[int, int]:

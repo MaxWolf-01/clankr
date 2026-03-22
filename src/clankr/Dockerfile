@@ -15,10 +15,13 @@ RUN npm install -g @anthropic-ai/claude-code
 
 RUN git config --system credential.helper '!f() { echo "username=x-access-token"; echo "password=$GH_TOKEN"; }; f'
 
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
 RUN usermod -d /home/agent -l agent node && mv /home/node /home/agent
 USER agent
 WORKDIR /work
 ENV HOME=/home/agent
 ENV CLAUDE_CONFIG_DIR=/home/agent/.claude
 
-ENTRYPOINT ["claude", "--dangerously-skip-permissions"]
+ENTRYPOINT ["entrypoint.sh"]

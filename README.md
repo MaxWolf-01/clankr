@@ -60,7 +60,11 @@ Each profile is an isolated claude code config — system prompt, settings, hook
 - `bare` — claude code, skip permissions, no extras
 - `gsd` — [get shit done](https://github.com/gsd-build/get-shit-done) workflow framework
 
-Create your own: `~/.config/clankr/profiles/<name>/` with `CLAUDE.md`, `settings.json`, and optionally `setup` (shell script that installs extensions).
+Create your own: `~/.config/clankr/profiles/<name>/` with any of:
+
+- `CLAUDE.md` — system prompt
+- `settings.json` — claude code settings
+- `init` — executable script that runs **inside the container** before claude starts (install plugins, extensions, etc.)
 
 ```bash
 clankr profiles                                   # list available profiles

@@ -280,11 +280,11 @@ def profiles_ls(args: ProfilesLs) -> None:
         return
     for p in sorted(pdir.iterdir()):
         if p.is_dir():
-            has_setup = (p / "setup").exists()
+            has_init = (p / "init").exists()
             has_claude = (p / "CLAUDE.md").exists()
             extras = []
-            if has_setup:
-                extras.append("setup")
+            if has_init:
+                extras.append("init")
             if has_claude:
                 extras.append("CLAUDE.md")
             print(f"  {p.name:<16} {', '.join(extras)}")
