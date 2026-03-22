@@ -256,6 +256,29 @@ def setup_repo(repo: Annotated[str, tyro.conf.Positional]) -> None:
             text=True,
         )
 
+    print("Configuring squash merge as default...")
+    subprocess.run(
+        [
+            "gh",
+            "api",
+            "-X",
+            "PATCH",
+            f"repos/{repo}",
+            "-F",
+            "allow_squash_merge=true",
+            "-F",
+            "allow_merge_commit=false",
+            "-F",
+            "allow_rebase_merge=false",
+            "-F",
+            "delete_branch_head_on_merge=true",
+            "-f",
+            "squash_merge_commit_title=PR_TITLE",
+            "-f",
+            "squash_merge_commit_message=PR_BODY",
+        ]
+    )
+
     print()
     print("Done.")
     print(f"  Accept invitation: log in as {cfg.clanker_user} → https://github.com/notifications")
