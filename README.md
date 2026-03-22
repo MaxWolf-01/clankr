@@ -36,7 +36,7 @@ This step is optional — agents work without it, but branch protection prevents
 clankr launch user/project                        # interactive, bare profile
 clankr launch -p gsd user/project                 # GSD workflow
 clankr launch -d -p gsd user/project              # detached (tmux)
-clankr launch -d -p gsd -s auth-fix user/project   # named slot
+clankr launch -d -p gsd -s auth-fix user/project  # named slot
 clankr launch /path/to/local/repo                 # local repo
 
 clankr attach project-1                           # reattach to detached agent
