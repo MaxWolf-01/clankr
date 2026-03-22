@@ -15,12 +15,20 @@ clankr init
 # prompts for: github username, bot username, PAT
 ```
 
-Create a [classic PAT](https://github.com/settings/tokens/new) on the bot account with `repo` scope. Per repo:
+Create a [classic PAT](https://github.com/settings/tokens/new) on the bot account with `repo` scope.
+
+### per-repo setup (recommended)
 
 ```bash
 clankr setup-repo user/project
 # then accept the invitation (log in as bot → github.com/notifications)
 ```
+
+This adds the bot as a collaborator and configures the repo with:
+- Branch protection: PRs required for main, owner bypasses
+- Squash merge only, auto-delete branch on merge
+
+This step is optional — agents work without it, but branch protection prevents them from pushing directly to main.
 
 ## usage
 
@@ -67,7 +75,7 @@ vim ~/.config/clankr/profiles/my-custom/CLAUDE.md
 - `--dangerously-skip-permissions` baked into the container
 - `-d` wraps the container in a tmux session — survives SSH disconnects
 - git identity: configurable bot account with scoped PAT
-- branch protection via `setup-repo`: require PR + approval for main, owner bypasses
+- branch protection via `setup-repo`: require PR + approval for main, owner bypasses, squash-only merges
 
 ## commands
 
@@ -80,8 +88,9 @@ vim ~/.config/clankr/profiles/my-custom/CLAUDE.md
 | `clankr rm <slot>` | Remove slot (warns if unpushed work) |
 | `clankr clean` | Remove all stopped clean slots |
 | `clankr logs <slot>` | Show container logs |
-| `clankr setup-repo <repo>` | Add bot collaborator + branch ruleset |
+| `clankr setup-repo <repo>` | Add bot collaborator + branch protection + squash merge |
 | `clankr profiles` | List available profiles |
+| `clankr version` | Print clankr version |
 
 ## paths
 
