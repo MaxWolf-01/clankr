@@ -231,24 +231,6 @@ def setup_repo(repo: Annotated[str, tyro.conf.Positional]) -> None:
 
         ruleset_data = json.loads(ruleset.read_text())
 
-        # Look up github_user's ID and add as bypass actor
-        if cfg.github_user:
-            r = subprocess.run(
-                ["gh", "api", f"users/{cfg.github_user}", "--jq", ".id"],
-                capture_output=True,
-                text=True,
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                ruleset_data["bypass_actors"] = [
-                    {
-                        "actor_id": int(r.stdout.strip()),
-                        "actor_type": "User",
-                        "bypass_mode": "exempt",
-                    }
-                ]
-            else:
-                print(f"  warning: could not look up GitHub user ID for {cfg.github_user}")
-
         print(f"Applying branch protection ruleset to {repo}...")
         subprocess.run(
             ["gh", "api", "-X", "POST", f"repos/{repo}/rulesets", "--input", "-"],
