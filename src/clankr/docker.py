@@ -71,12 +71,26 @@ def clone_repo(repo_url: str, slot: str) -> Path:
 
 
 def expand_repo_url(repo: str) -> str:
-    """Expand user/project shorthand to full GitHub URL."""
+    """Expand repo argument to a cloneable URL or local path.
+
+    Resolution order:
+    1. Explicit URL (https://, git@, ssh://) → used as-is
+    2. Local path (exists on disk)           → resolved to absolute path
+    3. user/project shorthand                → https://github.com/user/project
+    4. Otherwise                             → error
+    """
     import re
 
+    if repo.startswith(("https://", "http://", "git@", "ssh://")):
+        return repo
+    local = Path(repo).expanduser().resolve()
+    if local.exists():
+        return str(local)
     if re.match(r"^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$", repo):
         return f"https://github.com/{repo}"
-    return repo
+    print(f"Error: unrecognized repo: {repo!r}")
+    print("  Expected: user/project, a URL, or a local path")
+    sys.exit(1)
 
 
 def refresh_credentials(slot: str) -> None:
