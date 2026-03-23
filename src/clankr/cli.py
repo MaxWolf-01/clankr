@@ -111,6 +111,66 @@ def launch(args: Launch) -> None:
         )
 
 
+@dataclass
+class Run:
+    repo: Annotated[str, tyro.conf.Positional]
+    """Repository: user/project, https://github.com/user/project, or /local/path."""
+    profile: Annotated[str, tyro.conf.arg(aliases=["-p"])] = "bare"
+    """Profile to use. See 'clankr profiles ls'."""
+    slot: Annotated[str, tyro.conf.arg(aliases=["-s"])] = ""
+    """Slot name. Defaults to repo name."""
+    claude_args: Annotated[list[str], tyro.conf.Positional, tyro.conf.UseAppendAction] = field(default_factory=list)
+    """Arguments passed to claude (after --)."""
+
+
+@app.command(name="run")
+def run_cmd(args: Run) -> None:
+    """Run claude non-interactively in a container. Stdout is clean for capture."""
+    repo_url = docker.expand_repo_url(args.repo)
+    base = args.slot or Path(repo_url.rstrip("/")).stem.removesuffix(".git")
+
+    if args.slot:
+        slot = args.slot
+        state = docker.container_state(slot)
+        if state == "running":
+            print(f"Slot {slot} is already running.", file=sys.stderr)
+            sys.exit(1)
+        elif state is not None:
+            docker.remove_container(slot)
+    else:
+        slot = docker.next_slot(base)
+
+    # Local paths: mount directly. URLs: clone.
+    local_path = Path(repo_url)
+    if local_path.is_dir():
+        repo_dir = local_path
+    else:
+        repo_dir = docker.clone_repo(repo_url, slot)
+
+    claude_dir = docker.setup_slot(slot, args.profile)
+    docker.build_image()
+    docker.refresh_credentials(slot)
+
+    name = docker.container_name(slot)
+
+    result = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--name",
+            name,
+            "-v",
+            f"{repo_dir}:/work",
+            "-v",
+            f"{claude_dir}:/home/agent/.claude",
+            docker.IMAGE_NAME,
+            *args.claude_args,
+        ],
+    )
+    sys.exit(result.returncode)
+
+
 @app.command(name="ls")
 def list_slots() -> None:
     """List all slots."""

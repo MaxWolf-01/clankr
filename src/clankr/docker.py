@@ -26,14 +26,18 @@ def setup_slot(slot: str, profile: str) -> Path:
     if (claude_dir / "CLAUDE.md").exists():
         return claude_dir
 
-    profile_dir = paths.profiles_dir() / profile
+    # Profile can be a name (looked up in profiles dir) or a path
+    if "/" in profile:
+        profile_dir = Path(profile).expanduser().resolve()
+    else:
+        profile_dir = paths.profiles_dir() / profile
     if not profile_dir.exists():
         available = [p.name for p in paths.profiles_dir().iterdir() if p.is_dir()]
-        print(f"Profile not found: {profile}")
-        print(f"Available: {', '.join(available)}")
+        print(f"Profile not found: {profile}", file=sys.stderr)
+        print(f"Available: {', '.join(available)}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Setting up profile: {profile}")
+    print(f"Setting up profile: {profile}", file=sys.stderr)
     claude_dir.mkdir(parents=True, exist_ok=True)
 
     # Copy credentials from host
@@ -63,7 +67,7 @@ def clone_repo(repo_url: str, slot: str) -> Path:
     repo_dir = paths.repos_dir() / slot
     if repo_dir.exists():
         return repo_dir
-    print(f"Cloning {repo_url} → {repo_dir}")
+    print(f"Cloning {repo_url} → {repo_dir}", file=sys.stderr)
     paths.repos_dir().mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "clone", repo_url, str(repo_dir)], check=True)
     return repo_dir
@@ -87,8 +91,8 @@ def expand_repo_url(repo: str) -> str:
         return str(local)
     if re.match(r"^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$", repo):
         return f"https://github.com/{repo}"
-    print(f"Error: unrecognized repo: {repo!r}")
-    print("  Expected: user/project, a URL, or a local path")
+    print(f"Error: unrecognized repo: {repo!r}", file=sys.stderr)
+    print("  Expected: user/project, a URL, or a local path", file=sys.stderr)
     sys.exit(1)
 
 
@@ -108,10 +112,14 @@ def env_args() -> list[str]:
     if cfg.clanker_user:
         email = f"{cfg.clanker_user}@users.noreply.github.com"
         args += [
-            "--env", f"GIT_AUTHOR_NAME={cfg.clanker_user}",
-            "--env", f"GIT_AUTHOR_EMAIL={email}",
-            "--env", f"GIT_COMMITTER_NAME={cfg.clanker_user}",
-            "--env", f"GIT_COMMITTER_EMAIL={email}",
+            "--env",
+            f"GIT_AUTHOR_NAME={cfg.clanker_user}",
+            "--env",
+            f"GIT_AUTHOR_EMAIL={email}",
+            "--env",
+            f"GIT_COMMITTER_NAME={cfg.clanker_user}",
+            "--env",
+            f"GIT_COMMITTER_EMAIL={email}",
         ]
     return args
 
