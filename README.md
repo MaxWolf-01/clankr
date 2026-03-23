@@ -39,7 +39,11 @@ clankr launch -d -p gsd user/project              # detached (tmux)
 clankr launch -d -p gsd -s auth-fix user/project  # named slot
 clankr launch /path/to/local/repo                 # local repo
 
+clankr run user/project -- -p "prompt"                # non-interactive, stdout capture
+clankr run /path/to/repo -p ./profile -- -p "prompt"  # local repo, custom profile path
+
 clankr attach project-1                           # reattach to detached agent
+clankr save project-1 /path/to/host/repo          # export sessions to host ~/.claude/
 clankr ls                                         # list slots
 clankr rm project-1                               # remove (warns if unpushed)
 clankr clean                                      # remove all stopped clean slots
@@ -60,7 +64,7 @@ Each profile is an isolated claude code config — system prompt, settings, hook
 - `bare` — claude code, skip permissions, no extras
 - `gsd` — [get shit done](https://github.com/gsd-build/get-shit-done) workflow framework
 
-Create your own: `~/.config/clankr/profiles/<name>/` with any of:
+`-p` takes a profile name (looked up in `~/.config/clankr/profiles/`) or a path to a profile directory. Each profile is a directory with any of:
 
 - `CLAUDE.md` — system prompt
 - `settings.json` — claude code settings
@@ -87,8 +91,10 @@ vim ~/.config/clankr/profiles/my-custom/CLAUDE.md
 |---|---|
 | `clankr init` | First-time setup: config + default profiles |
 | `clankr launch` | Launch an agent (`-p` profile, `-s` slot, `-d` detach) |
+| `clankr run` | Run claude non-interactively (`-p` profile, `-s` slot, `--` claude args) |
 | `clankr ls` | List all slots |
 | `clankr attach <slot>` | Attach to detached agent's tmux session |
+| `clankr save <slot> <path>` | Export sessions to host `~/.claude/` for `claude --resume` |
 | `clankr rm <slot>` | Remove slot (warns if unpushed work) |
 | `clankr clean` | Remove all stopped clean slots |
 | `clankr logs <slot>` | Show container logs |

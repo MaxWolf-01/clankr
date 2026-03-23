@@ -227,6 +227,40 @@ def remove(slot: Annotated[str, tyro.conf.Positional]) -> None:
     print(f"removed {slot}")
 
 
+@app.command(name="save")
+def save(
+    slot: Annotated[str, tyro.conf.Positional],
+    host_path: Annotated[str, tyro.conf.Positional],
+) -> None:
+    """Save session files from a slot to the host's ~/.claude/ for backup/resume."""
+    slot_projects = paths.run_dir() / slot / ".claude" / "projects" / "-work"
+    if not slot_projects.exists():
+        print(f"No sessions found in slot {slot}")
+        sys.exit(1)
+
+    # Encode host path the same way claude does: /path/to/repo → -path-to-repo
+    encoded = host_path.replace("/", "-")
+    if not encoded.startswith("-"):
+        encoded = "-" + encoded
+    host_projects = Path.home() / ".claude" / "projects" / encoded
+    host_projects.mkdir(parents=True, exist_ok=True)
+
+    copied = 0
+    for item in slot_projects.iterdir():
+        if item.name == "memory":
+            continue
+        dest = host_projects / item.name
+        if item.is_file() and item.suffix == ".jsonl":
+            shutil.copy2(item, dest)
+            copied += 1
+        elif item.is_dir():
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(item, dest)
+
+    print(f"Saved {copied} session(s) from {slot} → {host_projects}")
+
+
 @app.command(name="clean")
 def clean() -> None:
     """Remove all stopped slots (skips slots with unpushed work)."""
