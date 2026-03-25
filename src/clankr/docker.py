@@ -12,9 +12,15 @@ IMAGE_NAME = "clankr-agent"
 
 
 def build_image() -> None:
+    from datetime import date
+
     dockerfile = paths.dockerfile_path()
     subprocess.run(
-        ["docker", "build", "-q", "-t", IMAGE_NAME, "-f", str(dockerfile), str(dockerfile.parent)],
+        [
+            "docker", "build", "-q", "-t", IMAGE_NAME,
+            "-f", str(dockerfile), str(dockerfile.parent),
+            "--build-arg", f"CLAUDE_CODE_CACHEBUST={date.today()}",
+        ],
         stdout=subprocess.DEVNULL,
         check=True,
     )

@@ -9,8 +9,9 @@ RUN ARCH=$(dpkg --print-architecture) \
     && curl -fsSL "https://github.com/cli/cli/releases/latest/download/gh_$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | jq -r .tag_name | sed 's/^v//')_linux_${ARCH}.tar.gz" \
     | tar -xz --strip-components=1 -C /usr/local
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.1 /uv /usr/local/bin/uv
 
+ARG CLAUDE_CODE_CACHEBUST
 RUN npm install -g @anthropic-ai/claude-code
 
 RUN git config --system credential.helper '!f() { echo "username=x-access-token"; echo "password=$GH_TOKEN"; }; f'

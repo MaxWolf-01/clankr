@@ -54,6 +54,7 @@ def launch(args: Launch) -> None:
         state = docker.container_state(slot)
         if state == "running":
             print(f"Slot {slot} is already running. Attaching...")
+            docker.refresh_credentials(slot)
             name = docker.container_name(slot)
             # Check if it's in a tmux session
             r = subprocess.run(["tmux", "has-session", "-t", name], capture_output=True)
@@ -195,6 +196,7 @@ def list_slots() -> None:
 )
 def attach(slot: Annotated[str, tyro.conf.Positional]) -> None:
     """Attach to a detached agent's tmux session."""
+    docker.refresh_credentials(slot)
     name = docker.container_name(slot)
     subprocess.run(["tmux", "attach", "-t", name])
 
