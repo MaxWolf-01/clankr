@@ -24,6 +24,14 @@ def profiles_dir() -> Path:
     return config_dir() / "profiles"
 
 
+def sessions_dir() -> Path:
+    return data_dir() / "sessions"
+
+
+def sync_map_file() -> Path:
+    return config_dir() / "sync_map.json"
+
+
 def config_file() -> Path:
     return config_dir() / "config.toml"
 
