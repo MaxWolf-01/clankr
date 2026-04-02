@@ -235,6 +235,96 @@ def list_slots() -> None:
         print(f"{s:<20} {profile:<8} {status:<12} {sync:<6} {repo}")
 
 
+@dataclass
+class Resume:
+    slot: Annotated[str, tyro.conf.Positional]
+    """Slot name to resume."""
+    detach: Annotated[bool, tyro.conf.arg(aliases=["-d"])] = False
+    """Run in a tmux session (detached)."""
+    claude_args: Annotated[list[str], tyro.conf.Positional, tyro.conf.UseAppendAction] = field(default_factory=list)
+    """Extra arguments passed to claude (after --)."""
+
+
+@app.command(name="resume")
+def resume(args: Resume) -> None:
+    """Resume a stopped slot with its original repo, profile, and sync config."""
+    slot = args.slot
+    repo_dir = paths.repos_dir() / slot
+    run = paths.run_dir() / slot
+
+    if not run.exists():
+        print(f"Slot not found: {slot}", file=sys.stderr)
+        sys.exit(1)
+
+    state = docker.container_state(slot)
+    if state == "running":
+        print(f"Slot {slot} is already running. Attaching...")
+        docker.refresh_credentials(slot)
+        name = docker.container_name(slot)
+        r = subprocess.run(["tmux", "has-session", "-t", name], capture_output=True)
+        if r.returncode == 0:
+            subprocess.run(["tmux", "attach", "-t", name])
+        else:
+            subprocess.run(["docker", "attach", name])
+        return
+    elif state is not None:
+        docker.remove_container(slot)
+
+    if not repo_dir.exists():
+        print(f"Repo clone not found for slot: {slot}", file=sys.stderr)
+        sys.exit(1)
+
+    claude_dir = run / ".claude"
+    profile = docker.slot_profile(slot)
+    sync_target = docker.get_sync_target(slot) or ""
+
+    sync_args: list[str] = []
+    if sync_target:
+        sync_args = docker.sync_mount_args(sync_target, slot)
+
+    docker.build_image()
+    docker.refresh_credentials(slot)
+
+    name = docker.container_name(slot)
+
+    common = [
+        "-v",
+        f"{repo_dir}:/work",
+        "-v",
+        f"{claude_dir}:/home/agent/.claude",
+        *sync_args,
+        *docker.env_args(),
+    ]
+
+    sync_msg = f", sync: {sync_target}" if sync_target else ""
+    print(f"Resuming {name} (profile: {profile}{sync_msg})")
+
+    if args.detach:
+        subprocess.run(["tmux", "kill-session", "-t", name], capture_output=True)
+        cmd = f"docker run --rm -it --name {name} {' '.join(common)} {docker.IMAGE_NAME} {' '.join(args.claude_args)}"
+        subprocess.run(
+            [
+                "tmux",
+                "new-session",
+                "-d",
+                "-s",
+                name,
+                "-x",
+                str(shutil.get_terminal_size().columns),
+                "-y",
+                str(shutil.get_terminal_size().lines),
+                cmd,
+            ]
+        )
+        print(f"Detached: tmux session '{name}'")
+        print(f"  attach:  clankr attach {slot}")
+        print("  detach:  Ctrl+B D")
+    else:
+        subprocess.run(
+            ["docker", "run", "--rm", "-it", "--name", name, *common, docker.IMAGE_NAME, *args.claude_args],
+        )
+
+
 @app.command(
     name="attach",
 )

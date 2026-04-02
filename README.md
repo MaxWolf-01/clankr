@@ -45,6 +45,7 @@ clankr run /path/to/repo -p ./profile -- -p "prompt"  # local repo, custom profi
 clankr sync user/project /path/to/host/repo       # register session sync mapping
 clankr sync                                       # list sync mappings
 
+clankr resume project-1                           # relaunch a stopped slot
 clankr attach project-1                           # reattach to detached agent
 clankr save project-1 /path/to/host/repo          # export sessions to host ~/.claude/
 clankr ls                                         # list slots
@@ -98,6 +99,7 @@ vim ~/.config/clankr/profiles/my-custom/CLAUDE.md
 | `clankr launch` | Launch an agent (`-p` profile, `-s` slot, `-d` detach) |
 | `clankr run` | Run claude non-interactively (`-p` profile, `-s` slot, `--` claude args) |
 | `clankr ls` | List all slots |
+| `clankr resume <slot>` | Relaunch a stopped slot (keeps repo, profile, sync) |
 | `clankr attach <slot>` | Attach to detached agent's tmux session |
 | `clankr sync [repo] [path]` | Manage session sync mappings (list / add / `--remove`) |
 | `clankr save <slot> <path>` | Export sessions to host `~/.claude/` for `claude --resume` |
