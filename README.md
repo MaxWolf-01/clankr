@@ -42,6 +42,9 @@ clankr launch /path/to/local/repo                 # local repo
 clankr run user/project -- -p "prompt"                # non-interactive, stdout capture
 clankr run /path/to/repo -p ./profile -- -p "prompt"  # local repo, custom profile path
 
+clankr sync user/project /path/to/host/repo       # register session sync mapping
+clankr sync                                       # list sync mappings
+
 clankr attach project-1                           # reattach to detached agent
 clankr save project-1 /path/to/host/repo          # export sessions to host ~/.claude/
 clankr ls                                         # list slots
@@ -51,10 +54,10 @@ clankr clean                                      # remove all stopped clean slo
 
 ```
 $ clankr ls
-SLOT                 PROFILE  STATUS       REPO
-hello-world-1        gsd      detached     /home/max/.local/share/clankr/repos/hello-world-1
-project-2            gsd      running      /home/max/.local/share/clankr/repos/project-2
-project-1            bare     stopped      /home/max/.local/share/clankr/repos/project-1
+SLOT                 PROFILE  STATUS       SYNC   REPO
+hello-world-1        gsd      detached     yes    /home/max/.local/share/clankr/repos/hello-world-1
+project-2            gsd      running      -      /home/max/.local/share/clankr/repos/project-2
+project-1            bare     stopped      -      /home/max/.local/share/clankr/repos/project-1
 ```
 
 ## profiles
@@ -79,6 +82,8 @@ vim ~/.config/clankr/profiles/my-custom/CLAUDE.md
 ## how it works
 
 - each slot gets its own repo clone and claude config
+- **session sync**: local repos auto-sync sessions to host `~/.claude/`; for remote repos, `clankr sync user/project /host/path` registers a mapping — sessions are bind-mounted and write directly to the host
+- **session preservation**: `rm`/`clean` auto-archive sessions before deleting (`--purge` to skip)
 - credentials copied fresh from host `~/.claude/.credentials.json` on each launch (tokens expire ~8h)
 - `--dangerously-skip-permissions` baked into the container
 - `-d` wraps the container in a tmux session — survives SSH disconnects
@@ -94,9 +99,10 @@ vim ~/.config/clankr/profiles/my-custom/CLAUDE.md
 | `clankr run` | Run claude non-interactively (`-p` profile, `-s` slot, `--` claude args) |
 | `clankr ls` | List all slots |
 | `clankr attach <slot>` | Attach to detached agent's tmux session |
+| `clankr sync [repo] [path]` | Manage session sync mappings (list / add / `--remove`) |
 | `clankr save <slot> <path>` | Export sessions to host `~/.claude/` for `claude --resume` |
-| `clankr rm <slot>` | Remove slot (warns if unpushed work) |
-| `clankr clean` | Remove all stopped clean slots |
+| `clankr rm <slot>` | Remove slot, auto-archives sessions (`--purge` to skip) |
+| `clankr clean` | Remove all stopped clean slots, auto-archives (`--purge` to skip) |
 | `clankr logs <slot>` | Show container logs |
 | `clankr setup-repo <repo>` | Add bot collaborator + branch protection + squash merge |
 | `clankr profiles` | List available profiles |
@@ -107,7 +113,9 @@ vim ~/.config/clankr/profiles/my-custom/CLAUDE.md
 | What | Where |
 |---|---|
 | Config | `~/.config/clankr/config.toml` |
+| Sync mappings | `~/.config/clankr/sync_map.json` |
 | Profiles | `~/.config/clankr/profiles/` |
 | Dockerfile override | `~/.config/clankr/Dockerfile` |
 | Repo clones | `~/.local/share/clankr/repos/` |
 | Slot state | `~/.local/share/clankr/run/` |
+| Archived sessions | `~/.local/share/clankr/sessions/` |

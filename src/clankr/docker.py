@@ -196,6 +196,101 @@ def slot_profile(slot: str) -> str:
     return "bare"
 
 
+def encode_host_path(path: str) -> str:
+    """Encode a host path the way Claude does: /path/to/repo → -path-to-repo."""
+    encoded = path.replace("/", "-")
+    if not encoded.startswith("-"):
+        encoded = "-" + encoded
+    return encoded
+
+
+def sync_mount_args(host_repo_path: str, slot: str) -> list[str]:
+    """Return docker -v args for session sync bind mount."""
+    encoded = encode_host_path(host_repo_path)
+    host_projects = Path.home() / ".claude" / "projects" / encoded
+    host_projects.mkdir(parents=True, exist_ok=True)
+    # Pre-create the mount target so Docker doesn't create it as root
+    (paths.run_dir() / slot / ".claude" / "projects" / "-work").mkdir(parents=True, exist_ok=True)
+    return ["-v", f"{host_projects}:/home/agent/.claude/projects/-work"]
+
+
+def save_sync_target(slot: str, host_path: str) -> None:
+    """Record the sync target for a slot."""
+    target_file = paths.run_dir() / slot / "sync_target"
+    target_file.parent.mkdir(parents=True, exist_ok=True)
+    target_file.write_text(host_path + "\n")
+
+
+def get_sync_target(slot: str) -> str | None:
+    """Get the sync target for a slot, if any."""
+    f = paths.run_dir() / slot / "sync_target"
+    if f.exists():
+        return f.read_text().strip()
+    return None
+
+
+def clear_sync_target(slot: str) -> None:
+    """Remove stale sync_target from a previous launch."""
+    f = paths.run_dir() / slot / "sync_target"
+    if f.exists():
+        f.unlink()
+
+
+def archive_sessions(slot: str) -> int:
+    """Archive session files from a slot. Returns count.
+
+    Skips if sync was active (sessions already on host via bind mount).
+    """
+    if get_sync_target(slot):
+        return 0
+
+    slot_projects = paths.run_dir() / slot / ".claude" / "projects" / "-work"
+    if not slot_projects.exists():
+        return 0
+
+    dest_dir = paths.sessions_dir() / slot
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    copied = 0
+    for item in slot_projects.iterdir():
+        if item.name == "memory":
+            continue
+        dest = dest_dir / item.name
+        if item.is_file() and item.suffix == ".jsonl":
+            shutil.copy2(item, dest)
+            copied += 1
+        elif item.is_dir():
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(item, dest)
+    return copied
+
+
+def migrate_sessions_to_sync(slot: str, host_repo_path: str) -> int:
+    """Copy existing session files from a slot to the sync target. For retroactive sync."""
+    slot_projects = paths.run_dir() / slot / ".claude" / "projects" / "-work"
+    if not slot_projects.exists():
+        return 0
+
+    encoded = encode_host_path(host_repo_path)
+    dest_dir = Path.home() / ".claude" / "projects" / encoded
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    migrated = 0
+    for item in slot_projects.iterdir():
+        if item.name == "memory":
+            continue
+        dest = dest_dir / item.name
+        if item.is_file() and item.suffix == ".jsonl":
+            shutil.copy2(item, dest)
+            migrated += 1
+        elif item.is_dir():
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(item, dest)
+    return migrated
+
+
 def git_status(slot: str) -> tuple[int, int]:
     """Returns (uncommitted, unpushed) counts."""
     repo = paths.repos_dir() / slot

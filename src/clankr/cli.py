@@ -71,6 +71,25 @@ def launch(args: Launch) -> None:
     repo_dir = docker.clone_repo(repo_url, slot)
     claude_dir = docker.setup_slot(slot, args.profile)
 
+    # Resolve sync target
+    sync_target = ""
+    if Path(repo_url).is_dir():
+        sync_target = repo_url
+    else:
+        key = config.normalize_repo(args.repo)
+        if key:
+            sync_target = config.load_sync_map().get(key, "")
+
+    sync_args: list[str] = []
+    if sync_target:
+        migrated = docker.migrate_sessions_to_sync(slot, sync_target)
+        if migrated:
+            print(f"Migrated {migrated} existing session(s) → {sync_target}")
+        sync_args = docker.sync_mount_args(sync_target, slot)
+        docker.save_sync_target(slot, sync_target)
+    else:
+        docker.clear_sync_target(slot)
+
     docker.build_image()
     docker.refresh_credentials(slot)
 
@@ -81,10 +100,12 @@ def launch(args: Launch) -> None:
         f"{repo_dir}:/work",
         "-v",
         f"{claude_dir}:/home/agent/.claude",
+        *sync_args,
         *docker.env_args(),
     ]
 
-    print(f"Launching {name} (profile: {args.profile})")
+    sync_msg = f", sync: {sync_target}" if sync_target else ""
+    print(f"Launching {name} (profile: {args.profile}{sync_msg})")
 
     if args.detach:
         subprocess.run(["tmux", "kill-session", "-t", name], capture_output=True)
@@ -149,6 +170,27 @@ def run_cmd(args: Run) -> None:
         repo_dir = docker.clone_repo(repo_url, slot)
 
     claude_dir = docker.setup_slot(slot, args.profile)
+
+    # Resolve sync target
+    sync_target = ""
+    if Path(repo_url).is_dir():
+        sync_target = repo_url
+    else:
+        key = config.normalize_repo(args.repo)
+        if key:
+            sync_target = config.load_sync_map().get(key, "")
+
+    sync_args: list[str] = []
+    if sync_target:
+        migrated = docker.migrate_sessions_to_sync(slot, sync_target)
+        if migrated:
+            print(f"Migrated {migrated} existing session(s) → {sync_target}", file=sys.stderr)
+        sync_args = docker.sync_mount_args(sync_target, slot)
+        docker.save_sync_target(slot, sync_target)
+        print(f"Session sync → {sync_target}", file=sys.stderr)
+    else:
+        docker.clear_sync_target(slot)
+
     docker.build_image()
     docker.refresh_credentials(slot)
 
@@ -165,6 +207,7 @@ def run_cmd(args: Run) -> None:
             f"{repo_dir}:/work",
             "-v",
             f"{claude_dir}:/home/agent/.claude",
+            *sync_args,
             docker.IMAGE_NAME,
             *args.claude_args,
         ],
@@ -183,12 +226,13 @@ def list_slots() -> None:
     if not slots:
         print("no slots")
         return
-    print(f"{'SLOT':<20} {'PROFILE':<8} {'STATUS':<12} REPO")
+    print(f"{'SLOT':<20} {'PROFILE':<8} {'STATUS':<12} {'SYNC':<6} REPO")
     for s in slots:
         profile = docker.slot_profile(s)
         status = docker.slot_status(s)
+        sync = "yes" if docker.get_sync_target(s) else "-"
         repo = paths.repos_dir() / s
-        print(f"{s:<20} {profile:<8} {status:<12} {repo}")
+        print(f"{s:<20} {profile:<8} {status:<12} {sync:<6} {repo}")
 
 
 @app.command(
@@ -202,8 +246,11 @@ def attach(slot: Annotated[str, tyro.conf.Positional]) -> None:
 
 
 @app.command(name="rm")
-def remove(slot: Annotated[str, tyro.conf.Positional]) -> None:
-    """Remove a slot (warns if unpushed work)."""
+def remove(
+    slot: Annotated[str, tyro.conf.Positional],
+    purge: bool = False,
+) -> None:
+    """Remove a slot (warns if unpushed work). Sessions are archived unless --purge."""
     dirty, unpushed = docker.git_status(slot)
     if dirty or unpushed:
         parts = []
@@ -216,6 +263,15 @@ def remove(slot: Annotated[str, tyro.conf.Positional]) -> None:
         if not ans.lower().startswith("y"):
             print("aborted")
             return
+
+    if not purge and config.load().save_sessions != "false":
+        sync_target = docker.get_sync_target(slot)
+        if sync_target:
+            print(f"  sessions synced to {sync_target}")
+        else:
+            saved = docker.archive_sessions(slot)
+            if saved:
+                print(f"  archived {saved} session(s) → {paths.sessions_dir() / slot}")
 
     name = docker.container_name(slot)
     subprocess.run(["tmux", "kill-session", "-t", name], capture_output=True)
@@ -240,10 +296,7 @@ def save(
         print(f"No sessions found in slot {slot}")
         sys.exit(1)
 
-    # Encode host path the same way claude does: /path/to/repo → -path-to-repo
-    encoded = host_path.replace("/", "-")
-    if not encoded.startswith("-"):
-        encoded = "-" + encoded
+    encoded = docker.encode_host_path(host_path)
     host_projects = Path.home() / ".claude" / "projects" / encoded
     host_projects.mkdir(parents=True, exist_ok=True)
 
@@ -263,13 +316,63 @@ def save(
     print(f"Saved {copied} session(s) from {slot} → {host_projects}")
 
 
+@app.command(name="sync")
+def sync_cmd(
+    repo: Annotated[str, tyro.conf.Positional] = "",
+    host_path: Annotated[str, tyro.conf.Positional] = "",
+    remove: bool = False,
+) -> None:
+    """Manage session sync mappings (repo → host path)."""
+    if not repo:
+        mapping = config.load_sync_map()
+        if not mapping:
+            print("no sync mappings")
+            return
+        for r, p in sorted(mapping.items()):
+            print(f"  {r:<30} → {p}")
+        return
+
+    key = config.normalize_repo(repo)
+    if not key:
+        print(f"Cannot normalize repo: {repo!r}", file=sys.stderr)
+        print("  Expected: user/project or a GitHub URL", file=sys.stderr)
+        sys.exit(1)
+
+    mapping = config.load_sync_map()
+
+    if remove:
+        if key in mapping:
+            del mapping[key]
+            config.save_sync_map(mapping)
+            print(f"removed sync mapping for {key}")
+        else:
+            print(f"no sync mapping for {key}")
+        return
+
+    if not host_path:
+        if key in mapping:
+            print(f"{key} → {mapping[key]}")
+        else:
+            print(f"no sync mapping for {key}")
+        return
+
+    resolved = str(Path(host_path).expanduser().resolve())
+    mapping[key] = resolved
+    config.save_sync_map(mapping)
+    print(f"sync: {key} → {resolved}")
+
+
 @app.command(name="clean")
-def clean() -> None:
-    """Remove all stopped slots (skips slots with unpushed work)."""
+def clean(purge: bool = False) -> None:
+    """Remove all stopped slots (skips slots with unpushed work). Sessions are archived unless --purge."""
     run = paths.run_dir()
     if not run.exists():
         print("no slots")
         return
+
+    cfg = config.load()
+    should_save = not purge and cfg.save_sessions != "false"
+
     print("removing all stopped slots...")
     for slot_dir in sorted(run.iterdir()):
         if not slot_dir.is_dir():
@@ -287,6 +390,12 @@ def clean() -> None:
                 parts.append(f"{unpushed} unpushed")
             print(f"  skipped {slot} ({' + '.join(parts)})")
             continue
+
+        if should_save and not docker.get_sync_target(slot):
+            saved = docker.archive_sessions(slot)
+            if saved:
+                print(f"  archived {saved} session(s) from {slot}")
+
         repo = paths.repos_dir() / slot
         if repo.exists():
             shutil.rmtree(repo)
