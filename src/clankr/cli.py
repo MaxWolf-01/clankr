@@ -85,8 +85,10 @@ def launch(args: Launch) -> None:
         migrated = docker.migrate_sessions_to_sync(slot, sync_target)
         if migrated:
             print(f"Migrated {migrated} existing session(s) → {sync_target}")
-        sync_args = docker.sync_mount_args(sync_target)
+        sync_args = docker.sync_mount_args(sync_target, slot)
         docker.save_sync_target(slot, sync_target)
+    else:
+        docker.clear_sync_target(slot)
 
     docker.build_image()
     docker.refresh_credentials(slot)
@@ -183,9 +185,11 @@ def run_cmd(args: Run) -> None:
         migrated = docker.migrate_sessions_to_sync(slot, sync_target)
         if migrated:
             print(f"Migrated {migrated} existing session(s) → {sync_target}", file=sys.stderr)
-        sync_args = docker.sync_mount_args(sync_target)
+        sync_args = docker.sync_mount_args(sync_target, slot)
         docker.save_sync_target(slot, sync_target)
         print(f"Session sync → {sync_target}", file=sys.stderr)
+    else:
+        docker.clear_sync_target(slot)
 
     docker.build_image()
     docker.refresh_credentials(slot)

@@ -204,11 +204,13 @@ def encode_host_path(path: str) -> str:
     return encoded
 
 
-def sync_mount_args(host_repo_path: str) -> list[str]:
+def sync_mount_args(host_repo_path: str, slot: str) -> list[str]:
     """Return docker -v args for session sync bind mount."""
     encoded = encode_host_path(host_repo_path)
     host_projects = Path.home() / ".claude" / "projects" / encoded
     host_projects.mkdir(parents=True, exist_ok=True)
+    # Pre-create the mount target so Docker doesn't create it as root
+    (paths.run_dir() / slot / ".claude" / "projects" / "-work").mkdir(parents=True, exist_ok=True)
     return ["-v", f"{host_projects}:/home/agent/.claude/projects/-work"]
 
 
@@ -225,6 +227,13 @@ def get_sync_target(slot: str) -> str | None:
     if f.exists():
         return f.read_text().strip()
     return None
+
+
+def clear_sync_target(slot: str) -> None:
+    """Remove stale sync_target from a previous launch."""
+    f = paths.run_dir() / slot / "sync_target"
+    if f.exists():
+        f.unlink()
 
 
 def archive_sessions(slot: str) -> int:
