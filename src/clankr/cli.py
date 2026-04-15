@@ -101,6 +101,7 @@ def launch(args: Launch) -> None:
         "-v",
         f"{claude_dir}:/home/agent/.claude",
         *sync_args,
+        *docker.profile_mounts(args.profile),
         *docker.env_args(),
     ]
 
@@ -208,6 +209,7 @@ def run_cmd(args: Run) -> None:
             "-v",
             f"{claude_dir}:/home/agent/.claude",
             *sync_args,
+            *docker.profile_mounts(args.profile),
             docker.IMAGE_NAME,
             *args.claude_args,
         ],
@@ -293,6 +295,7 @@ def resume(args: Resume) -> None:
         "-v",
         f"{claude_dir}:/home/agent/.claude",
         *sync_args,
+        *docker.profile_mounts(profile),
         *docker.env_args(),
     ]
 

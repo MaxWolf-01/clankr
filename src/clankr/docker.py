@@ -26,13 +26,8 @@ def build_image() -> None:
     )
 
 
-def setup_slot(slot: str, profile: str) -> Path:
-    """Set up a slot's .claude/ dir from a profile. Returns the claude dir path."""
-    claude_dir = paths.run_dir() / slot / ".claude"
-    if (claude_dir / "CLAUDE.md").exists():
-        return claude_dir
-
-    # Profile can be a name (looked up in profiles dir) or a path
+def resolve_profile_dir(profile: str) -> Path:
+    """Resolve a profile name or path to a directory. Exits if not found."""
     if "/" in profile:
         profile_dir = Path(profile).expanduser().resolve()
     else:
@@ -42,8 +37,14 @@ def setup_slot(slot: str, profile: str) -> Path:
         print(f"Profile not found: {profile}", file=sys.stderr)
         print(f"Available: {', '.join(available)}", file=sys.stderr)
         sys.exit(1)
+    return profile_dir
 
-    print(f"Setting up profile: {profile}", file=sys.stderr)
+
+def setup_slot(slot: str, profile: str) -> Path:
+    """Set up a slot's .claude/ dir from a profile. Returns the claude dir path."""
+    claude_dir = paths.run_dir() / slot / ".claude"
+    profile_dir = resolve_profile_dir(profile)
+
     claude_dir.mkdir(parents=True, exist_ok=True)
 
     # Copy credentials from host
@@ -64,9 +65,39 @@ def setup_slot(slot: str, profile: str) -> Path:
             if f == "init":
                 dest.chmod(0o755)
 
+    mounts_file = profile_dir / "mounts"
+    if mounts_file.exists():
+        with open(claude_dir / "CLAUDE.md", "a") as f:
+            f.write("\n\n## Host mounts\n\n" + mounts_file.read_text())
+
     (paths.run_dir() / slot / "profile").write_text(profile)
 
     return claude_dir
+
+
+def profile_mounts(profile: str) -> list[str]:
+    """Parse profile mounts file into docker -v args."""
+    profile_dir = resolve_profile_dir(profile)
+    mounts_file = profile_dir / "mounts"
+    if not mounts_file.exists():
+        return []
+    args = []
+    for line in mounts_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(":")
+        if len(parts) < 2:
+            print(f"Invalid mount spec (need src:dest): {line}", file=sys.stderr)
+            sys.exit(1)
+        src, dest = parts[0], parts[1]
+        mode = parts[2] if len(parts) > 2 else "rw"
+        if src.startswith("./"):
+            src = str(profile_dir / src[2:])
+        else:
+            src = str(Path(src).expanduser().resolve())
+        args.extend(["-v", f"{src}:{dest}:{mode}"])
+    return args
 
 
 def clone_repo(repo_url: str, slot: str) -> Path:

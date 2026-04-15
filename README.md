@@ -73,6 +73,7 @@ Each profile is an isolated claude code config — system prompt, settings, hook
 - `CLAUDE.md` — system prompt
 - `settings.json` — claude code settings
 - `init` — executable script that runs **inside the container** before claude starts (install plugins, extensions, etc.)
+- `mounts` — bind-mount host paths into the container (one per line: `source:destination[:ro|rw]`, default rw, `~` expanded, `./` relative to profile dir)
 
 ```bash
 clankr profiles                                   # list available profiles
