@@ -5,12 +5,12 @@ description = "Run coding agents in isolated Docker containers"
 readme = "README.md"
 requires-python = ">=3.14"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Maximilian Wolf" }]
 keywords = ["cli", "agents", "docker", "claude-code"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
