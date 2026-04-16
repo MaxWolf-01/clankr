@@ -36,9 +36,3 @@ def config_file() -> Path:
     return config_dir() / "config.toml"
 
 
-def dockerfile_path() -> Path:
-    """User override, or bundled default."""
-    user = config_dir() / "Dockerfile"
-    if user.exists():
-        return user
-    return Path(__file__).parent / "Dockerfile"

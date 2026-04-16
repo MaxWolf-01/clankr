@@ -1,25 +1,28 @@
 """Docker container management."""
 
-import json
+from __future__ import annotations
+
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from clankr import config, paths
+from clankr import paths
 
-IMAGE_NAME = "clankr-agent"
+if TYPE_CHECKING:
+    from clankr.harnesses import Harness
 
 
-def build_image() -> None:
+def build_image(harness: Harness) -> None:
     from datetime import date
 
-    dockerfile = paths.dockerfile_path()
+    dockerfile = harness.dockerfile_path()
     subprocess.run(
         [
-            "docker", "build", "-q", "-t", IMAGE_NAME,
+            "docker", "build", "-q", "-t", harness.image_name(),
             "-f", str(dockerfile), str(dockerfile.parent),
-            "--build-arg", f"CLAUDE_CODE_CACHEBUST={date.today()}",
+            "--build-arg", f"AGENT_CACHEBUST={date.today()}",
         ],
         stdout=subprocess.DEVNULL,
         check=True,
@@ -40,39 +43,17 @@ def resolve_profile_dir(profile: str) -> Path:
     return profile_dir
 
 
-def setup_slot(slot: str, profile: str) -> Path:
-    """Set up a slot's .claude/ dir from a profile. Returns the claude dir path."""
-    claude_dir = paths.run_dir() / slot / ".claude"
+def setup_slot(slot: str, profile: str, harness: Harness) -> Path:
+    """Set up a slot's config dir from a profile. Returns the config dir path."""
+    config_dir = paths.run_dir() / slot / "config"
     profile_dir = resolve_profile_dir(profile)
 
-    claude_dir.mkdir(parents=True, exist_ok=True)
-
-    # Copy credentials from host
-    host_creds = Path.home() / ".claude" / ".credentials.json"
-    if host_creds.exists():
-        shutil.copy2(host_creds, claude_dir / ".credentials.json")
-
-    # Seed .claude.json for TUI onboarding bypass
-    (claude_dir / ".claude.json").write_text(
-        json.dumps({"hasCompletedOnboarding": True, "installMethod": "npm", "numStartups": 5})
-    )
-
-    for f in ["CLAUDE.md", "settings.json", "init"]:
-        src = profile_dir / f
-        if src.exists():
-            dest = claude_dir / f
-            shutil.copy2(src, dest)
-            if f == "init":
-                dest.chmod(0o755)
-
-    mounts_file = profile_dir / "mounts"
-    if mounts_file.exists():
-        with open(claude_dir / "CLAUDE.md", "a") as f:
-            f.write("\n\n## Host mounts\n\n" + mounts_file.read_text())
+    harness.setup_config_dir(config_dir, profile_dir)
 
     (paths.run_dir() / slot / "profile").write_text(profile)
+    (paths.run_dir() / slot / "harness").write_text(harness.name)
 
-    return claude_dir
+    return config_dir
 
 
 def profile_mounts(profile: str) -> list[str]:
@@ -133,32 +114,26 @@ def expand_repo_url(repo: str) -> str:
     sys.exit(1)
 
 
-def refresh_credentials(slot: str) -> None:
-    host_creds = Path.home() / ".claude" / ".credentials.json"
-    slot_creds = paths.run_dir() / slot / ".claude" / ".credentials.json"
-    if host_creds.exists() and slot_creds.parent.exists():
-        shutil.copy2(host_creds, slot_creds)
+def refresh_credentials(slot: str, harness: Harness) -> None:
+    config_dir = slot_config_dir(slot)
+    if config_dir.exists():
+        harness.refresh_credentials(config_dir)
 
 
-def env_args() -> list[str]:
-    cfg = config.load()
-    args: list[str] = []
-    pat = cfg.pat()
-    if pat:
-        args += ["--env", f"GH_TOKEN={pat}"]
-    if cfg.clanker_user:
-        email = f"{cfg.clanker_user}@users.noreply.github.com"
-        args += [
-            "--env",
-            f"GIT_AUTHOR_NAME={cfg.clanker_user}",
-            "--env",
-            f"GIT_AUTHOR_EMAIL={email}",
-            "--env",
-            f"GIT_COMMITTER_NAME={cfg.clanker_user}",
-            "--env",
-            f"GIT_COMMITTER_EMAIL={email}",
-        ]
-    return args
+def slot_config_dir(slot: str) -> Path:
+    """Return the config dir for a slot. Migrates legacy .claude layout on first access."""
+    config = paths.run_dir() / slot / "config"
+    legacy = paths.run_dir() / slot / ".claude"
+    if not config.exists() and legacy.exists():
+        legacy.rename(config)
+    return config
+
+
+def slot_harness_name(slot: str) -> str:
+    harness_file = paths.run_dir() / slot / "harness"
+    if harness_file.exists():
+        return harness_file.read_text().strip()
+    return "claude"
 
 
 def container_name(slot: str) -> str:
@@ -227,22 +202,10 @@ def slot_profile(slot: str) -> str:
     return "bare"
 
 
-def encode_host_path(path: str) -> str:
-    """Encode a host path the way Claude does: /path/to/repo → -path-to-repo."""
-    encoded = path.replace("/", "-")
-    if not encoded.startswith("-"):
-        encoded = "-" + encoded
-    return encoded
-
-
-def sync_mount_args(host_repo_path: str, slot: str) -> list[str]:
+def sync_mount_args(host_repo_path: str, slot: str, harness: Harness) -> list[str]:
     """Return docker -v args for session sync bind mount."""
-    encoded = encode_host_path(host_repo_path)
-    host_projects = Path.home() / ".claude" / "projects" / encoded
-    host_projects.mkdir(parents=True, exist_ok=True)
-    # Pre-create the mount target so Docker doesn't create it as root
-    (paths.run_dir() / slot / ".claude" / "projects" / "-work").mkdir(parents=True, exist_ok=True)
-    return ["-v", f"{host_projects}:/home/agent/.claude/projects/-work"]
+    slot_run_dir = paths.run_dir() / slot
+    return harness.session_sync_mount_args(host_repo_path, slot_run_dir)
 
 
 def save_sync_target(slot: str, host_path: str) -> None:
@@ -267,7 +230,7 @@ def clear_sync_target(slot: str) -> None:
         f.unlink()
 
 
-def archive_sessions(slot: str) -> int:
+def archive_sessions(slot: str, harness: Harness) -> int:
     """Archive session files from a slot. Returns count.
 
     Skips if sync was active (sessions already on host via bind mount).
@@ -275,15 +238,16 @@ def archive_sessions(slot: str) -> int:
     if get_sync_target(slot):
         return 0
 
-    slot_projects = paths.run_dir() / slot / ".claude" / "projects" / "-work"
-    if not slot_projects.exists():
+    slot_run_dir = paths.run_dir() / slot
+    sessions_dir = harness.sessions_subdir(slot_run_dir)
+    if not sessions_dir.exists():
         return 0
 
     dest_dir = paths.sessions_dir() / slot
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     copied = 0
-    for item in slot_projects.iterdir():
+    for item in sessions_dir.iterdir():
         if item.name == "memory":
             continue
         dest = dest_dir / item.name
@@ -297,18 +261,18 @@ def archive_sessions(slot: str) -> int:
     return copied
 
 
-def migrate_sessions_to_sync(slot: str, host_repo_path: str) -> int:
+def migrate_sessions_to_sync(slot: str, host_repo_path: str, harness: Harness) -> int:
     """Copy existing session files from a slot to the sync target. For retroactive sync."""
-    slot_projects = paths.run_dir() / slot / ".claude" / "projects" / "-work"
-    if not slot_projects.exists():
+    slot_run_dir = paths.run_dir() / slot
+    sessions_dir = harness.sessions_subdir(slot_run_dir)
+    if not sessions_dir.exists():
         return 0
 
-    encoded = encode_host_path(host_repo_path)
-    dest_dir = Path.home() / ".claude" / "projects" / encoded
+    dest_dir = harness.host_sessions_dir(host_repo_path)
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     migrated = 0
-    for item in slot_projects.iterdir():
+    for item in sessions_dir.iterdir():
         if item.name == "memory":
             continue
         dest = dest_dir / item.name

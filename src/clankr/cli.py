@@ -6,10 +6,12 @@ Examples::
     clankr launch user/project
     clankr launch -p gsd user/project
     clankr launch -d -p gsd user/project
+    clankr launch -H pi user/project
     clankr ls
     clankr attach my-project
 """
 
+import json
 import shutil
 import subprocess
 import sys
@@ -22,8 +24,17 @@ import tyro
 from tyro.extras import SubcommandApp
 
 from clankr import config, docker, paths
+from clankr.harnesses import Harness
+from clankr.harnesses import available as available_harnesses
+from clankr.harnesses import get as get_harness
 
 app = SubcommandApp()
+
+
+def _resolve_harness(name: str | None) -> Harness:
+    if name is None:
+        name = config.load().default_harness
+    return get_harness(name)
 
 
 @dataclass
@@ -32,31 +43,30 @@ class Launch:
     """Repository: user/project, https://github.com/user/project, or /local/path."""
     profile: Annotated[str, tyro.conf.arg(aliases=["-p"])] = "bare"
     """Profile to use. See 'clankr profiles ls'."""
+    harness: Annotated[str | None, tyro.conf.arg(aliases=["-H"])] = None
+    """Agent harness (claude, pi). Defaults to config default_harness."""
     slot: Annotated[str, tyro.conf.arg(aliases=["-s"])] = ""
     """Slot name. Defaults to repo name. Use for multiple agents on the same repo."""
     detach: Annotated[bool, tyro.conf.arg(aliases=["-d"])] = False
     """Run in a tmux session (detached). Reattach with: clankr attach <slot>."""
-    claude_args: Annotated[list[str], tyro.conf.Positional, tyro.conf.UseAppendAction] = field(default_factory=list)
-    """Extra arguments passed to claude (after --)."""
+    agent_args: Annotated[list[str], tyro.conf.Positional, tyro.conf.UseAppendAction] = field(default_factory=list)
+    """Extra arguments passed to the agent (after --)."""
 
 
-@app.command(
-    name="launch",
-)
+@app.command(name="launch")
 def launch(args: Launch) -> None:
     """Launch an agent on a repository."""
+    h = _resolve_harness(args.harness)
     repo_url = docker.expand_repo_url(args.repo)
     base = args.slot or Path(repo_url.rstrip("/")).stem.removesuffix(".git")
 
     if args.slot:
         slot = args.slot
-        # Explicit slot: handle stale container
         state = docker.container_state(slot)
         if state == "running":
             print(f"Slot {slot} is already running. Attaching...")
-            docker.refresh_credentials(slot)
+            docker.refresh_credentials(slot, h)
             name = docker.container_name(slot)
-            # Check if it's in a tmux session
             r = subprocess.run(["tmux", "has-session", "-t", name], capture_output=True)
             if r.returncode == 0:
                 subprocess.run(["tmux", "attach", "-t", name])
@@ -69,7 +79,7 @@ def launch(args: Launch) -> None:
         slot = docker.next_slot(base)
 
     repo_dir = docker.clone_repo(repo_url, slot)
-    claude_dir = docker.setup_slot(slot, args.profile)
+    config_dir = docker.setup_slot(slot, args.profile, h)
 
     # Resolve sync target
     sync_target = ""
@@ -82,46 +92,40 @@ def launch(args: Launch) -> None:
 
     sync_args: list[str] = []
     if sync_target:
-        migrated = docker.migrate_sessions_to_sync(slot, sync_target)
+        migrated = docker.migrate_sessions_to_sync(slot, sync_target, h)
         if migrated:
             print(f"Migrated {migrated} existing session(s) → {sync_target}")
-        sync_args = docker.sync_mount_args(sync_target, slot)
+        sync_args = docker.sync_mount_args(sync_target, slot, h)
         docker.save_sync_target(slot, sync_target)
     else:
         docker.clear_sync_target(slot)
 
-    docker.build_image()
-    docker.refresh_credentials(slot)
+    docker.build_image(h)
+    docker.refresh_credentials(slot, h)
 
     name = docker.container_name(slot)
 
     common = [
-        "-v",
-        f"{repo_dir}:/work",
-        "-v",
-        f"{claude_dir}:/home/agent/.claude",
+        "-v", f"{repo_dir}:/work",
+        *h.config_mount_args(config_dir),
         *sync_args,
         *docker.profile_mounts(args.profile),
-        *docker.env_args(),
+        *h.env_args(),
     ]
 
     sync_msg = f", sync: {sync_target}" if sync_target else ""
-    print(f"Launching {name} (profile: {args.profile}{sync_msg})")
+    print(f"Launching {name} (harness: {h.name}, profile: {args.profile}{sync_msg})")
+
+    cmd_args = h.container_cmd(args.agent_args)
 
     if args.detach:
         subprocess.run(["tmux", "kill-session", "-t", name], capture_output=True)
-        cmd = f"docker run --rm -it --name {name} {' '.join(common)} {docker.IMAGE_NAME} {' '.join(args.claude_args)}"
+        cmd = f"docker run --rm -it --name {name} {' '.join(common)} {h.image_name()} {' '.join(cmd_args)}"
         subprocess.run(
             [
-                "tmux",
-                "new-session",
-                "-d",
-                "-s",
-                name,
-                "-x",
-                str(shutil.get_terminal_size().columns),
-                "-y",
-                str(shutil.get_terminal_size().lines),
+                "tmux", "new-session", "-d", "-s", name,
+                "-x", str(shutil.get_terminal_size().columns),
+                "-y", str(shutil.get_terminal_size().lines),
                 cmd,
             ]
         )
@@ -130,7 +134,7 @@ def launch(args: Launch) -> None:
         print("  detach:  Ctrl+B D")
     else:
         subprocess.run(
-            ["docker", "run", "--rm", "-it", "--name", name, *common, docker.IMAGE_NAME, *args.claude_args],
+            ["docker", "run", "--rm", "-it", "--name", name, *common, h.image_name(), *cmd_args],
         )
 
 
@@ -140,15 +144,18 @@ class Run:
     """Repository: user/project, https://github.com/user/project, or /local/path."""
     profile: Annotated[str, tyro.conf.arg(aliases=["-p"])] = "bare"
     """Profile to use. See 'clankr profiles ls'."""
+    harness: Annotated[str | None, tyro.conf.arg(aliases=["-H"])] = None
+    """Agent harness (claude, pi). Defaults to config default_harness."""
     slot: Annotated[str, tyro.conf.arg(aliases=["-s"])] = ""
     """Slot name. Defaults to repo name."""
-    claude_args: Annotated[list[str], tyro.conf.Positional, tyro.conf.UseAppendAction] = field(default_factory=list)
-    """Arguments passed to claude (after --)."""
+    agent_args: Annotated[list[str], tyro.conf.Positional, tyro.conf.UseAppendAction] = field(default_factory=list)
+    """Arguments passed to the agent (after --)."""
 
 
 @app.command(name="run")
 def run_cmd(args: Run) -> None:
-    """Run claude non-interactively in a container. Stdout is clean for capture."""
+    """Run agent non-interactively in a container. Stdout is clean for capture."""
+    h = _resolve_harness(args.harness)
     repo_url = docker.expand_repo_url(args.repo)
     base = args.slot or Path(repo_url.rstrip("/")).stem.removesuffix(".git")
 
@@ -170,7 +177,7 @@ def run_cmd(args: Run) -> None:
     else:
         repo_dir = docker.clone_repo(repo_url, slot)
 
-    claude_dir = docker.setup_slot(slot, args.profile)
+    config_dir = docker.setup_slot(slot, args.profile, h)
 
     # Resolve sync target
     sync_target = ""
@@ -183,35 +190,30 @@ def run_cmd(args: Run) -> None:
 
     sync_args: list[str] = []
     if sync_target:
-        migrated = docker.migrate_sessions_to_sync(slot, sync_target)
+        migrated = docker.migrate_sessions_to_sync(slot, sync_target, h)
         if migrated:
             print(f"Migrated {migrated} existing session(s) → {sync_target}", file=sys.stderr)
-        sync_args = docker.sync_mount_args(sync_target, slot)
+        sync_args = docker.sync_mount_args(sync_target, slot, h)
         docker.save_sync_target(slot, sync_target)
         print(f"Session sync → {sync_target}", file=sys.stderr)
     else:
         docker.clear_sync_target(slot)
 
-    docker.build_image()
-    docker.refresh_credentials(slot)
+    docker.build_image(h)
+    docker.refresh_credentials(slot, h)
 
     name = docker.container_name(slot)
+    cmd_args = h.container_cmd(args.agent_args)
 
     result = subprocess.run(
         [
-            "docker",
-            "run",
-            "--rm",
-            "--name",
-            name,
-            "-v",
-            f"{repo_dir}:/work",
-            "-v",
-            f"{claude_dir}:/home/agent/.claude",
+            "docker", "run", "--rm", "--name", name,
+            "-v", f"{repo_dir}:/work",
+            *h.config_mount_args(config_dir),
             *sync_args,
             *docker.profile_mounts(args.profile),
-            docker.IMAGE_NAME,
-            *args.claude_args,
+            h.image_name(),
+            *cmd_args,
         ],
     )
     sys.exit(result.returncode)
@@ -228,13 +230,14 @@ def list_slots() -> None:
     if not slots:
         print("no slots")
         return
-    print(f"{'SLOT':<20} {'PROFILE':<8} {'STATUS':<12} {'SYNC':<6} REPO")
+    print(f"{'SLOT':<20} {'HARNESS':<8} {'PROFILE':<8} {'STATUS':<12} {'SYNC':<6} REPO")
     for s in slots:
+        harness_name = docker.slot_harness_name(s)
         profile = docker.slot_profile(s)
         status = docker.slot_status(s)
         sync = "yes" if docker.get_sync_target(s) else "-"
         repo = paths.repos_dir() / s
-        print(f"{s:<20} {profile:<8} {status:<12} {sync:<6} {repo}")
+        print(f"{s:<20} {harness_name:<8} {profile:<8} {status:<12} {sync:<6} {repo}")
 
 
 @dataclass
@@ -243,8 +246,8 @@ class Resume:
     """Slot name to resume."""
     detach: Annotated[bool, tyro.conf.arg(aliases=["-d"])] = False
     """Run in a tmux session (detached)."""
-    claude_args: Annotated[list[str], tyro.conf.Positional, tyro.conf.UseAppendAction] = field(default_factory=list)
-    """Extra arguments passed to claude (after --)."""
+    agent_args: Annotated[list[str], tyro.conf.Positional, tyro.conf.UseAppendAction] = field(default_factory=list)
+    """Extra arguments passed to the agent (after --)."""
 
 
 @app.command(name="resume")
@@ -258,10 +261,12 @@ def resume(args: Resume) -> None:
         print(f"Slot not found: {slot}", file=sys.stderr)
         sys.exit(1)
 
+    h = get_harness(docker.slot_harness_name(slot))
+
     state = docker.container_state(slot)
     if state == "running":
         print(f"Slot {slot} is already running. Attaching...")
-        docker.refresh_credentials(slot)
+        docker.refresh_credentials(slot, h)
         name = docker.container_name(slot)
         r = subprocess.run(["tmux", "has-session", "-t", name], capture_output=True)
         if r.returncode == 0:
@@ -276,46 +281,39 @@ def resume(args: Resume) -> None:
         print(f"Repo clone not found for slot: {slot}", file=sys.stderr)
         sys.exit(1)
 
-    claude_dir = run / ".claude"
+    config_dir = docker.slot_config_dir(slot)
     profile = docker.slot_profile(slot)
     sync_target = docker.get_sync_target(slot) or ""
 
     sync_args: list[str] = []
     if sync_target:
-        sync_args = docker.sync_mount_args(sync_target, slot)
+        sync_args = docker.sync_mount_args(sync_target, slot, h)
 
-    docker.build_image()
-    docker.refresh_credentials(slot)
+    docker.build_image(h)
+    docker.refresh_credentials(slot, h)
 
     name = docker.container_name(slot)
+    cmd_args = h.container_cmd(args.agent_args)
 
     common = [
-        "-v",
-        f"{repo_dir}:/work",
-        "-v",
-        f"{claude_dir}:/home/agent/.claude",
+        "-v", f"{repo_dir}:/work",
+        *h.config_mount_args(config_dir),
         *sync_args,
         *docker.profile_mounts(profile),
-        *docker.env_args(),
+        *h.env_args(),
     ]
 
     sync_msg = f", sync: {sync_target}" if sync_target else ""
-    print(f"Resuming {name} (profile: {profile}{sync_msg})")
+    print(f"Resuming {name} (harness: {h.name}, profile: {profile}{sync_msg})")
 
     if args.detach:
         subprocess.run(["tmux", "kill-session", "-t", name], capture_output=True)
-        cmd = f"docker run --rm -it --name {name} {' '.join(common)} {docker.IMAGE_NAME} {' '.join(args.claude_args)}"
+        cmd = f"docker run --rm -it --name {name} {' '.join(common)} {h.image_name()} {' '.join(cmd_args)}"
         subprocess.run(
             [
-                "tmux",
-                "new-session",
-                "-d",
-                "-s",
-                name,
-                "-x",
-                str(shutil.get_terminal_size().columns),
-                "-y",
-                str(shutil.get_terminal_size().lines),
+                "tmux", "new-session", "-d", "-s", name,
+                "-x", str(shutil.get_terminal_size().columns),
+                "-y", str(shutil.get_terminal_size().lines),
                 cmd,
             ]
         )
@@ -324,16 +322,15 @@ def resume(args: Resume) -> None:
         print("  detach:  Ctrl+B D")
     else:
         subprocess.run(
-            ["docker", "run", "--rm", "-it", "--name", name, *common, docker.IMAGE_NAME, *args.claude_args],
+            ["docker", "run", "--rm", "-it", "--name", name, *common, h.image_name(), *cmd_args],
         )
 
 
-@app.command(
-    name="attach",
-)
+@app.command(name="attach")
 def attach(slot: Annotated[str, tyro.conf.Positional]) -> None:
     """Attach to a detached agent's tmux session."""
-    docker.refresh_credentials(slot)
+    h = get_harness(docker.slot_harness_name(slot))
+    docker.refresh_credentials(slot, h)
     name = docker.container_name(slot)
     subprocess.run(["tmux", "attach", "-t", name])
 
@@ -358,11 +355,12 @@ def remove(
             return
 
     if not purge and config.load().save_sessions != "false":
+        h = get_harness(docker.slot_harness_name(slot))
         sync_target = docker.get_sync_target(slot)
         if sync_target:
             print(f"  sessions synced to {sync_target}")
         else:
-            saved = docker.archive_sessions(slot)
+            saved = docker.archive_sessions(slot, h)
             if saved:
                 print(f"  archived {saved} session(s) → {paths.sessions_dir() / slot}")
 
@@ -383,21 +381,22 @@ def save(
     slot: Annotated[str, tyro.conf.Positional],
     host_path: Annotated[str, tyro.conf.Positional],
 ) -> None:
-    """Save session files from a slot to the host's ~/.claude/ for backup/resume."""
-    slot_projects = paths.run_dir() / slot / ".claude" / "projects" / "-work"
-    if not slot_projects.exists():
+    """Save session files from a slot to the host for backup/resume."""
+    h = get_harness(docker.slot_harness_name(slot))
+    slot_run_dir = paths.run_dir() / slot
+    sessions_dir = h.sessions_subdir(slot_run_dir)
+    if not sessions_dir.exists():
         print(f"No sessions found in slot {slot}")
         sys.exit(1)
 
-    encoded = docker.encode_host_path(host_path)
-    host_projects = Path.home() / ".claude" / "projects" / encoded
-    host_projects.mkdir(parents=True, exist_ok=True)
+    dest_dir = h.host_sessions_dir(host_path)
+    dest_dir.mkdir(parents=True, exist_ok=True)
 
     copied = 0
-    for item in slot_projects.iterdir():
+    for item in sessions_dir.iterdir():
         if item.name == "memory":
             continue
-        dest = host_projects / item.name
+        dest = dest_dir / item.name
         if item.is_file() and item.suffix == ".jsonl":
             shutil.copy2(item, dest)
             copied += 1
@@ -406,7 +405,7 @@ def save(
                 shutil.rmtree(dest)
             shutil.copytree(item, dest)
 
-    print(f"Saved {copied} session(s) from {slot} → {host_projects}")
+    print(f"Saved {copied} session(s) from {slot} → {dest_dir}")
 
 
 @app.command(name="sync")
@@ -485,7 +484,8 @@ def clean(purge: bool = False) -> None:
             continue
 
         if should_save and not docker.get_sync_target(slot):
-            saved = docker.archive_sessions(slot)
+            h = get_harness(docker.slot_harness_name(slot))
+            saved = docker.archive_sessions(slot, h)
             if saved:
                 print(f"  archived {saved} session(s) from {slot}")
 
@@ -513,20 +513,14 @@ def setup_repo(repo: Annotated[str, tyro.conf.Positional]) -> None:
     print(f"Adding {cfg.clanker_user} as collaborator to {repo}...")
     subprocess.run(
         [
-            "gh",
-            "api",
-            "-X",
-            "PUT",
+            "gh", "api", "-X", "PUT",
             f"repos/{repo}/collaborators/{cfg.clanker_user}",
-            "-f",
-            "permission=push",
+            "-f", "permission=push",
         ]
     )
 
     ruleset = Path(__file__).parent / "ruleset.json"
     if ruleset.exists():
-        import json
-
         ruleset_data = json.loads(ruleset.read_text())
 
         print(f"Applying branch protection ruleset to {repo}...")
@@ -539,23 +533,13 @@ def setup_repo(repo: Annotated[str, tyro.conf.Positional]) -> None:
     print("Configuring squash merge as default...")
     subprocess.run(
         [
-            "gh",
-            "api",
-            "-X",
-            "PATCH",
-            f"repos/{repo}",
-            "-F",
-            "allow_squash_merge=true",
-            "-F",
-            "allow_merge_commit=false",
-            "-F",
-            "allow_rebase_merge=false",
-            "-F",
-            "delete_branch_head_on_merge=true",
-            "-f",
-            "squash_merge_commit_title=PR_TITLE",
-            "-f",
-            "squash_merge_commit_message=PR_BODY",
+            "gh", "api", "-X", "PATCH", f"repos/{repo}",
+            "-F", "allow_squash_merge=true",
+            "-F", "allow_merge_commit=false",
+            "-F", "allow_rebase_merge=false",
+            "-F", "delete_branch_head_on_merge=true",
+            "-f", "squash_merge_commit_title=PR_TITLE",
+            "-f", "squash_merge_commit_message=PR_BODY",
         ]
     )
 
@@ -580,11 +564,14 @@ def profiles_ls(args: ProfilesLs) -> None:
         if p.is_dir():
             has_init = (p / "init").exists()
             has_claude = (p / "CLAUDE.md").exists()
+            has_agents = (p / "AGENTS.md").exists()
             extras = []
             if has_init:
                 extras.append("init")
             if has_claude:
                 extras.append("CLAUDE.md")
+            if has_agents:
+                extras.append("AGENTS.md")
             print(f"  {p.name:<16} {', '.join(extras)}")
 
 
@@ -605,6 +592,12 @@ def init() -> None:
         pat_path.chmod(0o600)
         cfg.pat_file = str(pat_path)
         print(f"  saved to {pat_path}")
+
+    harnesses = available_harnesses()
+    print(f"Available harnesses: {', '.join(harnesses)}")
+    default = input(f"Default harness [{cfg.default_harness}]: ").strip()
+    if default:
+        cfg.default_harness = default
 
     config.save(cfg)
     print(f"Config saved to {paths.config_file()}")
@@ -628,6 +621,37 @@ def init() -> None:
     paths.run_dir().mkdir(parents=True, exist_ok=True)
 
     print("\nReady. Run: clankr launch user/project")
+
+
+@app.command(name="auth")
+def auth() -> None:
+    """Use Claude CLI subscription OAuth tokens for pi. Reads ~/.claude/.credentials.json, writes ~/.pi/agent/auth.json. Use at your own risk."""
+    claude_creds = Path.home() / ".claude" / ".credentials.json"
+    if not claude_creds.exists():
+        print("No Claude credentials found at ~/.claude/.credentials.json", file=sys.stderr)
+        print("Log in with: claude", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        raw = json.loads(claude_creds.read_text())
+        source = raw.get("claudeAiOauth", raw)
+        pi_auth = {
+            "anthropic": {
+                "type": "oauth",
+                "access": source["accessToken"],
+                "refresh": source["refreshToken"],
+                "expires": source["expiresAt"],
+            }
+        }
+    except (KeyError, json.JSONDecodeError) as e:
+        print(f"Failed to parse Claude credentials: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    dest = Path.home() / ".pi" / "agent" / "auth.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(pi_auth, indent=2))
+    dest.chmod(0o600)
+    print(f"Claude OAuth → {dest}")
 
 
 @app.command(name="version")

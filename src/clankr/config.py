@@ -18,6 +18,8 @@ class Config:
     """Path to file containing the GitHub PAT (one line, just the token)."""
     save_sessions: str = "true"
     """Auto-archive sessions on rm/clean. Set to "false" to disable."""
+    default_harness: str = "claude"
+    """Default agent harness (claude, pi)."""
 
     def pat(self) -> str | None:
         if not self.pat_file:
@@ -53,6 +55,7 @@ def save(cfg: Config) -> None:
         f'clanker_user = "{cfg.clanker_user}"',
         f'pat_file = "{cfg.pat_file}"',
         f'save_sessions = "{cfg.save_sessions}"',
+        f'default_harness = "{cfg.default_harness}"',
     ]
     path.write_text("\n".join(lines) + "\n")
 

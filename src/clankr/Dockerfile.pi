@@ -11,12 +11,12 @@ RUN ARCH=$(dpkg --print-architecture) \
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.1 /uv /usr/local/bin/uv
 
-ARG CLAUDE_CODE_CACHEBUST
-RUN npm install -g @anthropic-ai/claude-code
+ARG AGENT_CACHEBUST
+RUN npm install -g @mariozechner/pi-coding-agent
 
 RUN git config --system credential.helper '!f() { echo "username=x-access-token"; echo "password=$GH_TOKEN"; }; f'
 
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY entrypoint.pi.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 RUN usermod -d /home/agent -l agent node && mv /home/node /home/agent
@@ -24,6 +24,5 @@ USER agent
 WORKDIR /work
 ENV HOME=/home/agent
 ENV PATH="/home/agent/.local/bin:${PATH}"
-ENV CLAUDE_CONFIG_DIR=/home/agent/.claude
 
 ENTRYPOINT ["entrypoint.sh"]
