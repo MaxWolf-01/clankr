@@ -1,0 +1,7 @@
+{
+  "skipDangerousModePermissionPrompt": true,
+  "env": {
+    "PYTHON_TYRO_UTF8_BOXES": "False",
+    "PYTHON_TYRO_ANSI_CODES": "False"
+  }
+}

@@ -110,7 +110,7 @@ def launch(args: Launch) -> None:
         *h.config_mount_args(config_dir),
         *sync_args,
         *docker.profile_mounts(args.profile),
-        *h.env_args(),
+        *h.env_args(config_dir),
     ]
 
     sync_msg = f", sync: {sync_target}" if sync_target else ""
@@ -212,6 +212,7 @@ def run_cmd(args: Run) -> None:
             *h.config_mount_args(config_dir),
             *sync_args,
             *docker.profile_mounts(args.profile),
+            *h.env_args(config_dir),
             h.image_name(),
             *cmd_args,
         ],
@@ -300,7 +301,7 @@ def resume(args: Resume) -> None:
         *h.config_mount_args(config_dir),
         *sync_args,
         *docker.profile_mounts(profile),
-        *h.env_args(),
+        *h.env_args(config_dir),
     ]
 
     sync_msg = f", sync: {sync_target}" if sync_target else ""

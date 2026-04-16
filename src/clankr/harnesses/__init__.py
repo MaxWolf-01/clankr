@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Protocol
 
@@ -39,8 +40,8 @@ class Harness(Protocol):
         """Docker -v args for session sync between host and container."""
         ...
 
-    def env_args(self) -> list[str]:
-        """Docker --env args for git identity, tokens, etc."""
+    def env_args(self, config_dir: Path) -> list[str]:
+        """Docker --env args (git identity, tokens, profile-declared env)."""
         ...
 
     def container_cmd(self, extra_args: list[str]) -> list[str]:
@@ -86,6 +87,14 @@ def common_env_args() -> list[str]:
             "--env", f"GIT_COMMITTER_EMAIL={email}",
         ]
     return args
+
+
+def settings_env_args(settings_path: Path) -> list[str]:
+    """Extract the `env` object from a settings.json and format as docker --env args."""
+    if not settings_path.exists():
+        return []
+    env = json.loads(settings_path.read_text()).get("env") or {}
+    return [arg for k, v in env.items() for arg in ("--env", f"{k}={v}")]
 
 
 _HARNESSES: dict[str, Harness] = {}

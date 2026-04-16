@@ -40,13 +40,15 @@ class ClaudeHarness:
                 shutil.copy2(src, config_dir / dest_name)
                 break
 
-        for f in ["settings.json", "init"]:
-            src = profile_dir / f
-            if src.exists():
-                dest = config_dir / f
-                shutil.copy2(src, dest)
-                if f == "init":
-                    dest.chmod(0o755)
+        src = profile_dir / "claude.settings.json"
+        if src.exists():
+            shutil.copy2(src, config_dir / "settings.json")
+
+        src = profile_dir / "init"
+        if src.exists():
+            dest = config_dir / "init"
+            shutil.copy2(src, dest)
+            dest.chmod(0o755)
 
         mounts_file = profile_dir / "mounts"
         if mounts_file.exists():
@@ -66,7 +68,7 @@ class ClaudeHarness:
         host_dir.mkdir(parents=True, exist_ok=True)
         return ["-v", f"{host_dir}:/home/agent/.claude/projects/-work"]
 
-    def env_args(self) -> list[str]:
+    def env_args(self, config_dir: Path) -> list[str]:
         return common_env_args()
 
     def container_cmd(self, extra_args: list[str]) -> list[str]:

@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 from clankr import paths
-from clankr.harnesses import common_env_args, register
+from clankr.harnesses import common_env_args, register, settings_env_args
 
 
 class PiHarness:
@@ -35,8 +35,7 @@ class PiHarness:
                 shutil.copy2(src, agent_dir / dest_name)
                 break
 
-        # Settings
-        src = profile_dir / "settings.json"
+        src = profile_dir / "pi.settings.json"
         if src.exists():
             shutil.copy2(src, agent_dir / "settings.json")
 
@@ -81,8 +80,8 @@ class PiHarness:
         (slot_run_dir / "config" / "agent" / "sessions" / "--work--").mkdir(parents=True, exist_ok=True)
         return ["-v", f"{host_dir}:{container_sessions}"]
 
-    def env_args(self) -> list[str]:
-        return common_env_args()
+    def env_args(self, config_dir: Path) -> list[str]:
+        return common_env_args() + settings_env_args(config_dir / "agent" / "settings.json")
 
     def container_cmd(self, extra_args: list[str]) -> list[str]:
         return extra_args

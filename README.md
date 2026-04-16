@@ -47,9 +47,9 @@ Pi authenticates via `~/.pi/agent/auth.json` (OAuth or API key). Options:
 ```bash
 clankr launch user/project                        # interactive, bare profile, default harness
 clankr launch -H pi user/project                  # use pi harness
-clankr launch -p gsd user/project                 # GSD workflow
-clankr launch -d -p gsd user/project              # detached (tmux)
-clankr launch -d -p gsd -s auth-fix user/project  # named slot
+clankr launch -p my-profile user/project          # custom configuration profile
+clankr launch -d user/project                     # detached (tmux)
+clankr launch -d -s auth-fix user/project         # named slot
 clankr launch /path/to/local/repo                 # local repo
 
 clankr run user/project -- -p "prompt"                # non-interactive, stdout capture
@@ -69,29 +69,28 @@ clankr clean                                      # remove all stopped clean slo
 ```
 $ clankr ls
 SLOT                 HARNESS  PROFILE  STATUS       SYNC   REPO
-hello-world-1        claude   gsd      detached     yes    /home/max/.local/share/clankr/repos/hello-world-1
+hello-world-1        claude   bare     detached     yes    /home/max/.local/share/clankr/repos/hello-world-1
 project-2            pi       bare     running      -      /home/max/.local/share/clankr/repos/project-2
 project-1            claude   bare     stopped      -      /home/max/.local/share/clankr/repos/project-1
 ```
 
 ## profiles
 
-Each profile is an agent config — context files, settings, init scripts, host mounts.
-
-- `bare` — minimal, skip permissions (claude) / defaults (pi)
-- `gsd` — [get shit done](https://github.com/gsd-build/get-shit-done) workflow framework
+Each profile is an agent config — settings, init scripts, host mounts. Clankr ships with one profile (`bare`); for a real-life example see e.g. [MaxWolf-01/agents](https://github.com/MaxWolf-01/agents).
 
 `-p` takes a profile name (looked up in `~/.config/clankr/profiles/`) or a path to a profile directory. Each profile is a directory with any of:
 
 - `CLAUDE.md` — context file for Claude Code harness
 - `AGENTS.md` — context file for pi (and other) harnesses. If only one exists, it's used for both.
-- `settings.json` — agent settings (format depends on target harness)
-- `init` — executable script that runs **inside the container** before the agent starts (install plugins, extensions, etc.)
+- `claude.settings.json` — Claude Code settings
+- `pi.settings.json` — pi settings. An `env` key here is extracted by clankr and passed as `docker --env` (pi ignores unknown keys; this is how we get env vars in since pi's schema has no native `env` field)
+- `pi.SYSTEM.md` — pi system prompt override (pi's default prompt triggers Anthropic's subscription-blocking detection; see `agent/knowledge/pi-auth.md`)
+- `init` — executable script that runs **inside the container** before the agent starts
 - `mounts` — bind-mount host paths into the container (one per line: `source:destination[:ro|rw]`, default rw, `~` expanded, `./` relative to profile dir)
 
 ```bash
 clankr profiles                                   # list available profiles
-cp -r ~/.config/clankr/profiles/gsd ~/.config/clankr/profiles/my-custom
+cp -r ~/.config/clankr/profiles/bare ~/.config/clankr/profiles/my-custom
 vim ~/.config/clankr/profiles/my-custom/CLAUDE.md
 ```
 
