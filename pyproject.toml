@@ -1,6 +1,6 @@
 [project]
 name = "clankr"
-version = "2.0.0"
+version = "2.0.1"
 description = "Run coding agents (Claude Code, pi, ...) in isolated Docker containers"
 readme = "README.md"
 requires-python = ">=3.14"
