@@ -18,15 +18,15 @@ def build_image(harness: Harness) -> None:
     from datetime import date
 
     dockerfile = harness.dockerfile_path()
-    subprocess.run(
+    r = subprocess.run(
         [
-            "docker", "build", "-q", "-t", harness.image_name(),
+            "docker", "build", "-t", harness.image_name(),
             "-f", str(dockerfile), str(dockerfile.parent),
             "--build-arg", f"AGENT_CACHEBUST={date.today()}",
         ],
-        stdout=subprocess.DEVNULL,
-        check=True,
     )
+    if r.returncode != 0:
+        sys.exit(r.returncode)
 
 
 def resolve_profile_dir(profile: str) -> Path:
