@@ -202,6 +202,12 @@ def slot_profile(slot: str) -> str:
     return "bare"
 
 
+def repo_mount_args(repo_dir: Path, sync_target: str) -> list[str]:
+    """Repo mount + workdir. Mirrors sync_target so the agent's cwd matches the host path."""
+    target = sync_target or "/work"
+    return ["-v", f"{repo_dir}:{target}", "-w", target]
+
+
 def sync_mount_args(host_repo_path: str, slot: str, harness: Harness) -> list[str]:
     """Return docker -v args for session sync bind mount."""
     slot_run_dir = paths.run_dir() / slot

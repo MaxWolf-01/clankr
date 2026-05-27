@@ -66,7 +66,8 @@ class ClaudeHarness:
     def session_sync_mount_args(self, host_repo_path: str, slot_run_dir: Path) -> list[str]:
         host_dir = self.host_sessions_dir(host_repo_path)
         host_dir.mkdir(parents=True, exist_ok=True)
-        return ["-v", f"{host_dir}:/home/agent/.claude/projects/-work"]
+        encoded = self.encode_host_path(host_repo_path)
+        return ["-v", f"{host_dir}:/home/agent/.claude/projects/{encoded}"]
 
     def env_args(self, config_dir: Path) -> list[str]:
         return common_env_args()

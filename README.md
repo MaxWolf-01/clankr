@@ -98,7 +98,7 @@ vim ~/.config/clankr/profiles/my-custom/CLAUDE.md
 
 - each slot gets its own repo clone and agent config
 - **harness**: `-H` selects the agent runtime (claude, pi). Default configurable via `clankr init`
-- **session sync**: sessions bind-mounted to the host for the active harness's session layout
+- **session sync**: sessions bind-mounted to the host for the active harness's session layout — synced slots mirror the host repo path inside the container, so sessions show up natively in `claude --resume` from that path on the host
 - **session preservation**: `rm`/`clean` auto-archive sessions before deleting (`--purge` to skip)
 - credentials copied fresh from host on each launch (Claude: `~/.claude/.credentials.json`, pi: `~/.pi/agent/auth.json`)
 - `-d` wraps the container in a tmux session — survives SSH disconnects

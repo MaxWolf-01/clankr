@@ -106,7 +106,7 @@ def launch(args: Launch) -> None:
     name = docker.container_name(slot)
 
     common = [
-        "-v", f"{repo_dir}:/work",
+        *docker.repo_mount_args(repo_dir, sync_target),
         *h.config_mount_args(config_dir),
         *sync_args,
         *docker.profile_mounts(args.profile),
@@ -208,7 +208,7 @@ def run_cmd(args: Run) -> None:
     result = subprocess.run(
         [
             "docker", "run", "--rm", "--name", name,
-            "-v", f"{repo_dir}:/work",
+            *docker.repo_mount_args(repo_dir, sync_target),
             *h.config_mount_args(config_dir),
             *sync_args,
             *docker.profile_mounts(args.profile),
@@ -297,7 +297,7 @@ def resume(args: Resume) -> None:
     cmd_args = h.container_cmd(args.agent_args)
 
     common = [
-        "-v", f"{repo_dir}:/work",
+        *docker.repo_mount_args(repo_dir, sync_target),
         *h.config_mount_args(config_dir),
         *sync_args,
         *docker.profile_mounts(profile),
