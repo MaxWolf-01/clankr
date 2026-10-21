@@ -29,7 +29,7 @@ clankr setup-repo user/project
 ```
 
 This adds the bot as a collaborator and configures the repo with:
-- Branch protection: PRs required for main, owner bypasses
+- Branch protection: PRs required for main, owner exempt (pushes straight to it, silently)
 - Squash merge only, auto-delete branch on merge
 
 This step is optional — agents work without it, but branch protection prevents them from pushing directly to main.
@@ -103,7 +103,7 @@ vim ~/.config/clankr/profiles/my-custom/CLAUDE.md
 - credentials copied fresh from host on each launch (Claude: `~/.claude/.credentials.json`, pi: `~/.pi/agent/auth.json`)
 - `-d` wraps the container in a tmux session — survives SSH disconnects
 - git identity: configurable bot account with scoped PAT
-- branch protection via `setup-repo`: require PR + approval for main, owner bypasses, squash-only merges
+- branch protection via `setup-repo`: require PR + approval for main, owner exempt, squash-only merges
 
 ## commands
 
